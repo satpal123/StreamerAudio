@@ -60,16 +60,12 @@ class GetValidTokenUseCaseTest {
 
         // Second emission: Success
         assertTrue(result[1] is ResponseState.Success)
-        val successData = (result[1] as ResponseState.Success).data
+        val successData = (result[1] as ResponseState.Success).data!!
         assertEquals(expectedValidation, successData)
         assertEquals("client_id_123", successData.clientId)
-        assertNotNull(successData)
         assertEquals("test_user", successData.login)
-        assertNotNull(successData)
         assertEquals(2, successData.scopes.size)
-        assertNotNull(successData)
         assertEquals("user_123", successData.userId)
-        assertNotNull(successData)
         assertEquals(3600L, successData.expiresIn)
 
         // Verify repository was called
