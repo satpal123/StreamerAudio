@@ -18,7 +18,7 @@ class ResponseStateTest {
 
         assertNull(state.data)
         assertNull(state.message)
-        assertTrue(state is ResponseState.Loading)
+        assertTrue(state is ResponseState.Loading<*>)
     }
 
     @Test
@@ -28,7 +28,7 @@ class ResponseStateTest {
 
         assertEquals(testData, state.data)
         assertNull(state.message)
-        assertTrue(state is ResponseState.Loading)
+        assertTrue(state is ResponseState.Loading<*>)
     }
 
     @Test
@@ -69,7 +69,7 @@ class ResponseStateTest {
 
         assertEquals(testData, state.data)
         assertNull(state.message)
-        assertTrue(state is ResponseState.Success)
+        assertTrue(state is ResponseState.Success<*>)
     }
 
     @Test
@@ -97,7 +97,7 @@ class ResponseStateTest {
         assertEquals(testData, state.data)
         assertNotNull(state.data)
         assertEquals(5, state.data!!.size)
-        assertEquals(1, state.data[0])
+        assertEquals(1, state.data!![0])
     }
 
     @Test
@@ -107,7 +107,7 @@ class ResponseStateTest {
 
         assertEquals(testData, state.data)
         assertNotNull(state.data)
-        assertEquals("value1", state.data["key1"])
+        assertEquals("value1", state.data!!["key1"])
         assertEquals(2, state.data!!.size)
     }
 
@@ -139,7 +139,7 @@ class ResponseStateTest {
         val state = ResponseState.Success(testData)
 
         assertNull(state.data)
-        assertTrue(state is ResponseState.Success)
+        assertTrue(state is ResponseState.Success<*>)
     }
 
     @Test
@@ -167,7 +167,7 @@ class ResponseStateTest {
 
         assertEquals(errorMessage, state.message)
         assertNull(state.data)
-        assertTrue(state is ResponseState.Error)
+        assertTrue(state is ResponseState.Error<*>)
     }
 
     @Test
@@ -251,14 +251,14 @@ class ResponseStateTest {
     @Test
     fun `Different states can be assigned to same variable`() {
         var state: ResponseState<String> = ResponseState.Loading()
-        assertTrue(state is ResponseState.Loading)
+        assertTrue(state is ResponseState.Loading<*>)
 
         state = ResponseState.Success("Success")
-        assertTrue(state is ResponseState.Success)
+        assertTrue(state is ResponseState.Success<*>)
         assertEquals("Success", state.data)
 
         state = ResponseState.Error("Error")
-        assertTrue(state is ResponseState.Error)
+        assertTrue(state is ResponseState.Error<*>)
         assertEquals("Error", state.message)
     }
 
@@ -272,9 +272,9 @@ class ResponseStateTest {
 
         val results = states.map { state ->
             when (state) {
-                is ResponseState.Loading -> "Loading"
-                is ResponseState.Success -> "Success: ${state.data}"
-                is ResponseState.Error -> "Error: ${state.message}"
+                is ResponseState.Loading<*> -> "Loading"
+                is ResponseState.Success<*> -> "Success: ${state.data}"
+                is ResponseState.Error<*> -> "Error: ${state.message}"
             }
         }
 
@@ -337,8 +337,8 @@ class ResponseStateTest {
         assertEquals(testData, successState.data)
         assertNotNull(errorState.message)
         assertNull(successState.message)
-        assertFalse(errorState is ResponseState.Success)
-        assertFalse(successState is ResponseState.Error)
+        assertFalse(errorState is ResponseState.Success<*>)
+        assertFalse(successState is ResponseState.Error<*>)
     }
 
     @Test
@@ -387,7 +387,7 @@ class ResponseStateTest {
 
         assertNotNull(state.data)
         assertEquals(3, state.data!!.size)
-        assertEquals(2, state.data[0][1])
-        assertEquals(9, state.data[2][2])
+        assertEquals(2, state.data!![0][1])
+        assertEquals(9, state.data!![2][2])
     }
 }
