@@ -60,12 +60,13 @@ class GetValidTokenUseCaseTest {
 
         // Second emission: Success
         assertTrue(result[1] is ResponseState.Success)
-        assertEquals(expectedValidation, result[1].data)
-        assertEquals("client_id_123", result[1].data?.clientId)
-        assertEquals("test_user", result[1].data?.login)
-        assertEquals(2, result[1].data?.scopes?.size)
-        assertEquals("user_123", result[1].data?.userId)
-        assertEquals(3600L, result[1].data?.expiresIn)
+        val successData = (result[1] as ResponseState.Success).data
+        assertEquals(expectedValidation, successData)
+        assertEquals("client_id_123", successData.clientId)
+        assertEquals("test_user", successData.login)
+        assertEquals(2, successData.scopes.size)
+        assertEquals("user_123", successData.userId)
+        assertEquals(3600L, successData.expiresIn)
 
         // Verify repository was called
         coVerify(exactly = 1) { repository.validateAccessToken(authorization) }

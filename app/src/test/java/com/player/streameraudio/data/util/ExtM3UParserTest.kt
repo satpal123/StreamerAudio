@@ -116,7 +116,7 @@ class ExtM3UParserTest {
             assertEquals("1920x1080", resolution)
             assertEquals("avc1.640028", codecs)
             assertEquals("video-1", video)
-            assertEquals(60.0, frameRate, 0.001)
+            assertEquals(60.0, frameRate!!, 0.001)
         }
     }
 
@@ -130,7 +130,7 @@ class ExtM3UParserTest {
         val result = parser.parse(input)
 
         assertEquals(1, result.size)
-        assertEquals(29.97, result[0].frameRate, 0.001)
+        assertEquals(29.97, result[0].frameRate!!, 0.001)
     }
 
     @Test
@@ -195,7 +195,7 @@ class ExtM3UParserTest {
             assertEquals("1920x1080", resolution)
             assertEquals("avc1.640028,mp4a.40.2", codecs)
             assertEquals("video-1", video)
-            assertEquals(60.0, frameRate, 0.001)
+            assertEquals(60.0, frameRate!!, 0.001)
             assertEquals("https://cdn.example.com/stream/hd.m3u8", playlistUrl)
         }
     }
@@ -468,7 +468,7 @@ class ExtM3UParserTest {
         assertEquals("1920x1080", entry.resolution)
         assertEquals("avc1.640028", entry.codecs)
         assertEquals("video-1", entry.video)
-        assertEquals(60.0, entry.frameRate, 0.001)
+        assertEquals(60.0, entry.frameRate!!, 0.001)
         assertEquals("https://example.com/stream.m3u8", entry.playlistUrl)
     }
 }
