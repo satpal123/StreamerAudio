@@ -9,6 +9,21 @@
 
 An Android application that allows users to listen to live Twitch streams as audio-only, perfect for multitasking or saving bandwidth. Supports both authenticated users (with followed channels) and guest browsing.
 
+## 📸 Screenshots
+
+<p align="center">
+    <img src="screenshots/01_login_screen.png" width="200" />
+    <img src="screenshots/02_main_screen_logged_in.png" width="200" />
+    <img src="screenshots/03_categories_screen.png" width="200" />
+    <img src="screenshots/04_live_screen.png" width="200" />
+    <img src="screenshots/05_player_screen.png" width="200" />
+    <img src="screenshots/06_settings_screen.png" width="200" />
+    <img src="screenshots/07_main_screen_aa.png" width="200" />
+    <img src="screenshots/08_main_screen_not_logged_in.png" width="200" />
+    <img src="screenshots/09_live_screen_notlogged_in.png" width="200" />
+    <img src="screenshots/10_player_screen.png" width="200" />
+</p>
+
 ## ✨ Features
 
 ### Core Features
