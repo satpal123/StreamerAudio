@@ -2,7 +2,9 @@ name: Build Signed APK
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
   workflow_dispatch:
 
 jobs:
@@ -24,10 +26,9 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Decode keystore
-        shell: bash
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > release.jks
-          echo "ANDROID_KEYSTORE_PATH=${{ github.workspace }}/release.jks" >> $GITHUB_ENV
+          echo "ANDROID_KEYSTORE_PATH=${GITHUB_WORKSPACE}/release.jks" >> "$GITHUB_ENV"
 
       - name: Build Release APK (signed)
         env:
@@ -38,20 +39,54 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: ./gradlew :app:assembleRelease --no-daemon
 
-      - name: Rename APK with version
-        shell: bash
+      - name: Build Debug APK
+        env:
+          TWITCH_CLIENT_ID: ${{ secrets.TWITCH_CLIENT_ID }}
+        run: ./gradlew :app:assembleDebug --no-daemon
+
+      - name: Rename APKs with version (from output-metadata.json)
         run: |
-          VERSION_NAME=$(./gradlew :app:properties -q | sed -n 's/^versionName: //p' | head -n 1)
-          VERSION_CODE=$(./gradlew :app:properties -q | sed -n 's/^versionCode: //p' | head -n 1)
+          set -euo pipefail
 
-          APK_IN=$(ls -1 app/build/outputs/apk/release/*.apk | head -n 1)
-          APK_OUT="StreamerAudio-v${VERSION_NAME}(${VERSION_CODE})-release-signed.apk"
+          SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-7)"
 
-          cp "$APK_IN" "$APK_OUT"
-          echo "APK_OUT=$APK_OUT" >> $GITHUB_ENV
+          rename_variant () {
+            VARIANT="$1"
+            META="app/build/outputs/apk/${VARIANT}/output-metadata.json"
 
-      - name: Upload APK artifact
+            if [ ! -f "$META" ]; then
+              echo "ERROR: metadata not found: $META"
+              ls -la "app/build/outputs/apk/${VARIANT}" || true
+              exit 1
+            fi
+
+            VERSION_NAME="$(jq -r '.elements[0].versionName' "$META")"
+            VERSION_CODE="$(jq -r '.elements[0].versionCode' "$META")"
+            OUTPUT_FILE="$(jq -r '.elements[0].outputFile' "$META")"
+
+            APK_IN="app/build/outputs/apk/${VARIANT}/${OUTPUT_FILE}"
+            if [ ! -f "$APK_IN" ]; then
+              echo "ERROR: APK not found: $APK_IN"
+              ls -la "app/build/outputs/apk/${VARIANT}" || true
+              exit 1
+            fi
+
+            APK_OUT="StreamerAudio-v${VERSION_NAME}-${SHORT_SHA}-${VARIANT}.apk"
+            cp "$APK_IN" "$APK_OUT"
+            echo "Created: $APK_OUT"
+          }
+
+          rename_variant "release"
+          rename_variant "debug"
+
+      - name: Upload Release APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.APK_OUT }}
-          path: ${{ env.APK_OUT }}
+          name: StreamerAudio-release-apk
+          path: StreamerAudio-v*-release.apk
+
+      - name: Upload Debug APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: StreamerAudio-debug-apk
+          path: StreamerAudio-v*-debug.apk
