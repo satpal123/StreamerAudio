@@ -102,8 +102,8 @@ The app follows Clean Architecture principles with MVVM pattern:
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/streamer-audio.git
-cd streamer-audio
+git clone https://github.com/satpal123/StreamerAudio.git
+cd StreamerAudio
 ```
 
 ### 2. Twitch API Setup
