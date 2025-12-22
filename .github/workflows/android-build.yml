@@ -3,9 +3,13 @@ name: Build Signed APK
 on:
   push:
     branches: ["main"]
+    tags: ["v*"]
   pull_request:
     branches: ["main"]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -71,9 +75,15 @@ jobs:
               exit 1
             fi
 
+            # include versionName + sha
             APK_OUT="StreamerAudio-v${VERSION_NAME}-${SHORT_SHA}-${VARIANT}.apk"
             cp "$APK_IN" "$APK_OUT"
             echo "Created: $APK_OUT"
+
+            # expose release APK path for later steps
+            if [ "$VARIANT" = "release" ]; then
+              echo "RELEASE_APK=$APK_OUT" >> "$GITHUB_ENV"
+            fi
           }
 
           rename_variant "release"
@@ -90,3 +100,9 @@ jobs:
         with:
           name: StreamerAudio-debug-apk
           path: StreamerAudio-v*-debug.apk
+
+      - name: Create GitHub Release and attach signed APK
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.RELEASE_APK }}
