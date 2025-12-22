@@ -121,8 +121,8 @@ class SearchTwitchChannelsUseCaseTest {
 
         // Then
         val successState = result.last() as ResponseState.Success
-        assertEquals(1, successState.data.first.size)
-        assertEquals("final_cursor", successState.data.second)
+        assertEquals(1, successState.data!!.first.size)
+        assertEquals("final_cursor", successState.data!!.second)
 
         coVerify(exactly = 1) {
             repository.searchChannels(testAuthorization, testClientId, testQuery, afterCursor)
@@ -153,8 +153,8 @@ class SearchTwitchChannelsUseCaseTest {
 
         // Then
         val successState = result.last() as ResponseState.Success
-        assertEquals(1, successState.data.first.size)
-        assertNull(successState.data.second)
+        assertEquals(1, successState.data!!.first.size)
+        assertNull(successState.data!!.second)
     }
 
     @Test
@@ -171,8 +171,8 @@ class SearchTwitchChannelsUseCaseTest {
 
         // Then
         val successState = result.last() as ResponseState.Success
-        assertTrue(successState.data.first.isEmpty())
-        assertNull(successState.data.second)
+        assertTrue(successState.data!!.first.isEmpty())
+        assertNull(successState.data!!.second)
     }
 
     @Test
@@ -204,8 +204,8 @@ class SearchTwitchChannelsUseCaseTest {
         val success1 = result1.last() as ResponseState.Success
         val success2 = result2.last() as ResponseState.Success
 
-        assertEquals("Gamer", success1.data.first[0].displayName)
-        assertEquals("Musician", success2.data.first[0].displayName)
+        assertEquals("Gamer", success1.data!!.first[0].displayName)
+        assertEquals("Musician", success2.data!!.first[0].displayName)
     }
 
     @Test
@@ -230,8 +230,8 @@ class SearchTwitchChannelsUseCaseTest {
 
         // Then
         val successState = result.last() as ResponseState.Success
-        assertEquals(5, successState.data.first.size)
-        assertEquals("page2_cursor", successState.data.second)
+        assertEquals(5, successState.data!!.first.size)
+        assertEquals("page2_cursor", successState.data!!.second)
     }
 
     @Test
@@ -258,7 +258,7 @@ class SearchTwitchChannelsUseCaseTest {
 
         // Then
         val successState = result.last() as ResponseState.Success
-        val channel = successState.data.first[0]
+        val channel = successState.data!!.first[0]
         assertNull(channel.thumbnailUrl)
         assertNull(channel.title)
         assertFalse(channel.isLive)
@@ -442,7 +442,7 @@ class SearchTwitchChannelsUseCaseTest {
 
         // Then
         val successState = result.last() as ResponseState.Success
-        assertTrue(successState.data.first.isEmpty())
+        assertTrue(successState.data!!.first.isEmpty())
 
         coVerify(exactly = 1) {
             repository.searchChannels(testAuthorization, testClientId, emptyQuery, null)
@@ -503,7 +503,7 @@ class SearchTwitchChannelsUseCaseTest {
 
         // Then
         val successState = result.last() as ResponseState.Success
-        assertEquals(1, successState.data.first.size)
-        assertEquals("ユーザー", successState.data.first[0].displayName)
+        assertEquals(1, successState.data!!.first.size)
+        assertEquals("ユーザー", successState.data!!.first[0].displayName)
     }
 }

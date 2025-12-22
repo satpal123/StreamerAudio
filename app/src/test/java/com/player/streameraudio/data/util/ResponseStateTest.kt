@@ -96,7 +96,7 @@ class ResponseStateTest {
 
         assertEquals(testData, state.data)
         assertNotNull(state.data)
-        assertEquals(5, state.data.size)
+        assertEquals(5, state.data!!.size)
         assertEquals(1, state.data[0])
     }
 
@@ -108,7 +108,7 @@ class ResponseStateTest {
         assertEquals(testData, state.data)
         assertNotNull(state.data)
         assertEquals("value1", state.data["key1"])
-        assertEquals(2, state.data.size)
+        assertEquals(2, state.data!!.size)
     }
 
     @Test
@@ -119,9 +119,9 @@ class ResponseStateTest {
 
         assertEquals(response, state.data)
         assertNotNull(state.data)
-        assertEquals(200, state.data.code)
-        assertEquals("OK", state.data.message)
-        assertEquals(3, state.data.data.size)
+        assertEquals(200, state.data!!.code)
+        assertEquals("OK", state.data!!.message)
+        assertEquals(3, state.data!!.data.size)
     }
 
     @Test
@@ -155,7 +155,7 @@ class ResponseStateTest {
         val state = ResponseState.Success(emptyList<String>())
 
         assertNotNull(state.data)
-        assertTrue(state.data.isEmpty())
+        assertTrue(state.data!!.isEmpty())
     }
 
     // ========== Error State Tests ==========
@@ -295,9 +295,9 @@ class ResponseStateTest {
 
         assertEquals(paginatedData, state.data)
         assertNotNull(state.data)
-        assertEquals(2, state.data.data.size)
+        assertEquals(2, state.data!!.data.size)
         assertNotNull(state.data)
-        assertEquals("next_cursor", state.data.cursor)
+        assertEquals("next_cursor", state.data!!.cursor)
     }
 
     @Test
@@ -307,8 +307,8 @@ class ResponseStateTest {
 
         assertEquals(testData, state.data)
         assertNotNull(state.data)
-        assertEquals(3, state.data.first.size)
-        assertEquals("cursor_123", state.data.second)
+        assertEquals(3, state.data!!.first.size)
+        assertEquals("cursor_123", state.data!!.second)
     }
 
     // ========== Edge Cases ==========
@@ -358,11 +358,11 @@ class ResponseStateTest {
         val state = ResponseState.Success(largeList)
 
         assertNotNull(state.data)
-        assertEquals(10000, state.data.size)
+        assertEquals(10000, state.data!!.size)
         assertNotNull(state.data)
         assertNotNull(state.data)
-        assertEquals(1, state.data.first())
-        assertEquals(10000, state.data.last())
+        assertEquals(1, state.data!!.first())
+        assertEquals(10000, state.data!!.last())
     }
 
     @Test
@@ -386,7 +386,7 @@ class ResponseStateTest {
         val state = ResponseState.Success(nestedData)
 
         assertNotNull(state.data)
-        assertEquals(3, state.data.size)
+        assertEquals(3, state.data!!.size)
         assertEquals(2, state.data[0][1])
         assertEquals(9, state.data[2][2])
     }

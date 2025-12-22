@@ -91,11 +91,11 @@ class GetValidTokenUseCaseTest {
 
         // Then
         val successState = result.last() as ResponseState.Success
-        assertEquals("different_client", successState.data.clientId)
-        assertEquals("another_user", successState.data.login)
-        assertEquals(1, successState.data.scopes.size)
-        assertEquals("user_456", successState.data.userId)
-        assertEquals(7200L, successState.data.expiresIn)
+        assertEquals("different_client", successState.data!!.clientId)
+        assertEquals("another_user", successState.data!!.login)
+        assertEquals(1, successState.data!!.scopes.size)
+        assertEquals("user_456", successState.data!!.userId)
+        assertEquals(7200L, successState.data!!.expiresIn)
     }
 
     @Test
@@ -122,9 +122,9 @@ class GetValidTokenUseCaseTest {
 
         // Then
         val successState = result.last() as ResponseState.Success
-        assertEquals(4, successState.data.scopes.size)
-        assertTrue(successState.data.scopes.contains("user:read:email"))
-        assertTrue(successState.data.scopes.contains("channel:read:subscriptions"))
+        assertEquals(4, successState.data!!.scopes.size)
+        assertTrue(successState.data!!.scopes.contains("user:read:email"))
+        assertTrue(successState.data!!.scopes.contains("channel:read:subscriptions"))
     }
 
     @Test
@@ -146,7 +146,7 @@ class GetValidTokenUseCaseTest {
 
         // Then
         val successState = result.last() as ResponseState.Success
-        assertTrue(successState.data.scopes.isEmpty())
+        assertTrue(successState.data!!.scopes.isEmpty())
     }
 
     // ========== Error Scenarios: 401 Unauthorized ==========
@@ -423,10 +423,10 @@ class GetValidTokenUseCaseTest {
         val success1 = result1.last() as ResponseState.Success
         val success2 = result2.last() as ResponseState.Success
 
-        assertEquals("user1", success1.data.login)
-        assertEquals("user2", success2.data.login)
-        assertEquals(3600L, success1.data.expiresIn)
-        assertEquals(7200L, success2.data.expiresIn)
+        assertEquals("user1", success1.data!!.login)
+        assertEquals("user2", success2.data!!.login)
+        assertEquals(3600L, success1.data!!.expiresIn)
+        assertEquals(7200L, success2.data!!.expiresIn)
 
         coVerify(exactly = 1) { repository.validateAccessToken(token1) }
         coVerify(exactly = 1) { repository.validateAccessToken(token2) }
