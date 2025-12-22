@@ -4,8 +4,6 @@ on:
   push:
     branches: ["main"]
     tags: ["v*"]
-  pull_request:
-    branches: ["main"]
   workflow_dispatch:
 
 permissions:
@@ -29,12 +27,43 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
+      # ---------- PR builds (no secrets) ----------
+      - name: Build Debug APK (PR-safe)
+        if: github.event_name == 'pull_request'
+        run: ./gradlew :app:assembleDebug --no-daemon
+
+      - name: Rename Debug APK (PR-safe)
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-7)"
+          META="app/build/outputs/apk/debug/output-metadata.json"
+
+          VERSION_NAME="$(jq -r '.elements[0].versionName' "$META")"
+          OUTPUT_FILE="$(jq -r '.elements[0].outputFile' "$META")"
+
+          APK_IN="app/build/outputs/apk/debug/${OUTPUT_FILE}"
+          APK_OUT="StreamerAudio-v${VERSION_NAME}-${SHORT_SHA}-debug.apk"
+
+          cp "$APK_IN" "$APK_OUT"
+          echo "Created: $APK_OUT"
+
+      - name: Upload Debug APK artifact (PR-safe)
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: StreamerAudio-debug-apk
+          path: StreamerAudio-v*-debug.apk
+
+      # ---------- Push/Tag builds (use secrets + signed release) ----------
       - name: Decode keystore
+        if: github.event_name != 'pull_request'
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > release.jks
           echo "ANDROID_KEYSTORE_PATH=${GITHUB_WORKSPACE}/release.jks" >> "$GITHUB_ENV"
 
       - name: Build Release APK (signed)
+        if: github.event_name != 'pull_request'
         env:
           TWITCH_CLIENT_ID: ${{ secrets.TWITCH_CLIENT_ID }}
           ANDROID_KEYSTORE_PATH: ${{ env.ANDROID_KEYSTORE_PATH }}
@@ -44,43 +73,31 @@ jobs:
         run: ./gradlew :app:assembleRelease --no-daemon
 
       - name: Build Debug APK
+        if: github.event_name != 'pull_request'
         env:
           TWITCH_CLIENT_ID: ${{ secrets.TWITCH_CLIENT_ID }}
         run: ./gradlew :app:assembleDebug --no-daemon
 
-      - name: Rename APKs with version (from output-metadata.json)
+      - name: Rename APKs with version (push/tag)
+        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
-
           SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-7)"
 
           rename_variant () {
             VARIANT="$1"
             META="app/build/outputs/apk/${VARIANT}/output-metadata.json"
 
-            if [ ! -f "$META" ]; then
-              echo "ERROR: metadata not found: $META"
-              ls -la "app/build/outputs/apk/${VARIANT}" || true
-              exit 1
-            fi
-
             VERSION_NAME="$(jq -r '.elements[0].versionName' "$META")"
             VERSION_CODE="$(jq -r '.elements[0].versionCode' "$META")"
             OUTPUT_FILE="$(jq -r '.elements[0].outputFile' "$META")"
 
             APK_IN="app/build/outputs/apk/${VARIANT}/${OUTPUT_FILE}"
-            if [ ! -f "$APK_IN" ]; then
-              echo "ERROR: APK not found: $APK_IN"
-              ls -la "app/build/outputs/apk/${VARIANT}" || true
-              exit 1
-            fi
+            APK_OUT="StreamerAudio-v${VERSION_NAME}(${VERSION_CODE})-${SHORT_SHA}-${VARIANT}.apk"
 
-            # include versionName + sha
-            APK_OUT="StreamerAudio-v${VERSION_NAME}-${SHORT_SHA}-${VARIANT}.apk"
             cp "$APK_IN" "$APK_OUT"
             echo "Created: $APK_OUT"
 
-            # expose release APK path for later steps
             if [ "$VARIANT" = "release" ]; then
               echo "RELEASE_APK=$APK_OUT" >> "$GITHUB_ENV"
             fi
@@ -90,12 +107,14 @@ jobs:
           rename_variant "debug"
 
       - name: Upload Release APK artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: StreamerAudio-release-apk
           path: StreamerAudio-v*-release.apk
 
       - name: Upload Debug APK artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: StreamerAudio-debug-apk
