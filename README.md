@@ -206,16 +206,11 @@ Access settings via the toolbar menu (⚙️):
 
 Future enhancements planned:
 
-- [ ] Offline playback queue
-- [ ] Custom stream quality selection
-- [ ] Chat overlay option
 - [ ] Favorites/bookmarks for guest users
 - [ ] Playback history
 - [ ] Sleep timer
 - [ ] Chromecast support
-- [ ] Picture-in-Picture mode
 - [ ] Equalizer integration
-- [ ] VOD (Video on Demand) support
 
 ## 🐛 Known Issues
 
