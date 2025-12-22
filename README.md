@@ -297,3 +297,6 @@ The goal is to create the best audio-only Twitch experience on Android, with fea
 
 <p align="center">Made with ❤️ for the Twitch community</p>
 <p align="center">⭐ Star this repo if you find it useful!</p>
+<p align="center">
+  ☕ Enjoying the app? <a href="https://ko-fi.com/satpal123">Support the project on Ko-fi</a>
+</p>

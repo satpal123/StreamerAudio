@@ -22,7 +22,7 @@ android {
         minSdk = 26
         targetSdk = 34
         versionCode = 1
-        versionName = "1.8"
+        versionName = "1.0.0"
 
         val twitchClientId =
             (project.findProperty("TWITCH_CLIENT_ID") as String?)
