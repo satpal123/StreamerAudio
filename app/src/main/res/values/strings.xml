@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">Streamer Audio</string>
+    <string name="now_playing">Now Playing</string>
+    <string name="streamer_image">Streamer Image</string>
+    <string name="notification_channel_name">streamer_audio</string>
+    <string name="live">LIVE</string>
+    <!-- Strings used for fragments for navigation -->
+</resources>

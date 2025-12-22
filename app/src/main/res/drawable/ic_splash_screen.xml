@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Splash screen icon - larger and designed for splash screen display -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="288dp"
+    android:height="288dp"
+    android:viewportWidth="288"
+    android:viewportHeight="288">
+
+    <!-- Headphones icon - centered and properly sized for splash -->
+    <group
+        android:translateX="144"
+        android:translateY="144">
+
+        <!-- Headband -->
+        <path
+            android:pathData="M -70,-15 Q -70,-85 0,-85 Q 70,-85 70,-15"
+            android:strokeColor="#9147ff"
+            android:strokeWidth="20"
+            android:strokeLineCap="round"
+            android:fillColor="#00000000"/>
+
+        <!-- Left ear cup outer -->
+        <path
+            android:pathData="M -85,-15 L -45,-15 L -45,47 L -85,47 Z"
+            android:fillColor="#9147ff"/>
+
+        <!-- Left ear cup inner -->
+        <path
+            android:pathData="M -79,-9 L -51,-9 L -51,41 L -79,41 Z"
+            android:fillColor="#FFFFFF"/>
+
+        <!-- Right ear cup outer -->
+        <path
+            android:pathData="M 45,-15 L 85,-15 L 85,47 L 45,47 Z"
+            android:fillColor="#9147ff"/>
+
+        <!-- Right ear cup inner -->
+        <path
+            android:pathData="M 51,-9 L 79,-9 L 79,41 L 51,41 Z"
+            android:fillColor="#FFFFFF"/>
+
+        <!-- Sound wave 1 -->
+        <path
+            android:pathData="M 100,-12 Q 115,0 100,12"
+            android:strokeColor="#9147ff"
+            android:strokeWidth="6"
+            android:strokeLineCap="round"
+            android:fillColor="#00000000"
+            android:fillAlpha="0.8"/>
+
+        <!-- Sound wave 2 -->
+        <path
+            android:pathData="M 108,-20 Q 130,0 108,20"
+            android:strokeColor="#9147ff"
+            android:strokeWidth="6"
+            android:strokeLineCap="round"
+            android:fillColor="#00000000"
+            android:fillAlpha="0.5"/>
+
+        <!-- Play button circle background -->
+        <path
+            android:pathData="M 0,23 m -27,0 a 27,27 0 1,0 54,0 a 27,27 0 1,0 -54,0"
+            android:fillColor="#9147ff"
+            android:fillAlpha="0.15"/>
+
+        <!-- Play button triangle -->
+        <path
+            android:pathData="M -8,12 L -8,34 L 12,23 Z"
+            android:fillColor="#9147ff"/>
+    </group>
+</vector>
