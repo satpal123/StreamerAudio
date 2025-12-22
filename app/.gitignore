@@ -1,1 +1,13 @@
+# Build outputs
 /build
+/debug
+/release
+
+# APK files
+*.apk
+*.aab
+*.ap_
+
+# Signing files
+*.jks
+*.keystore
