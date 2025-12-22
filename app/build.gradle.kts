@@ -13,6 +13,12 @@ plugins {
     id("com.google.dagger.hilt.android")
 }
 
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(11))
+    }
+}
+
 android {
     namespace = "com.player.streameraudio"
     compileSdk = 34
