@@ -95,6 +95,7 @@ class ResponseStateTest {
         val state = ResponseState.Success(testData)
 
         assertEquals(testData, state.data)
+        assertNotNull(state.data)
         assertEquals(5, state.data.size)
         assertEquals(1, state.data[0])
     }
@@ -105,6 +106,7 @@ class ResponseStateTest {
         val state = ResponseState.Success(testData)
 
         assertEquals(testData, state.data)
+        assertNotNull(state.data)
         assertEquals("value1", state.data["key1"])
         assertEquals(2, state.data.size)
     }
@@ -116,6 +118,7 @@ class ResponseStateTest {
         val state = ResponseState.Success(response)
 
         assertEquals(response, state.data)
+        assertNotNull(state.data)
         assertEquals(200, state.data.code)
         assertEquals("OK", state.data.message)
         assertEquals(3, state.data.data.size)
@@ -291,7 +294,9 @@ class ResponseStateTest {
         val state = ResponseState.Success(paginatedData)
 
         assertEquals(paginatedData, state.data)
+        assertNotNull(state.data)
         assertEquals(2, state.data.data.size)
+        assertNotNull(state.data)
         assertEquals("next_cursor", state.data.cursor)
     }
 
@@ -301,6 +306,7 @@ class ResponseStateTest {
         val state = ResponseState.Success(testData)
 
         assertEquals(testData, state.data)
+        assertNotNull(state.data)
         assertEquals(3, state.data.first.size)
         assertEquals("cursor_123", state.data.second)
     }
@@ -351,7 +357,10 @@ class ResponseStateTest {
         val largeList = (1..10000).toList()
         val state = ResponseState.Success(largeList)
 
+        assertNotNull(state.data)
         assertEquals(10000, state.data.size)
+        assertNotNull(state.data)
+        assertNotNull(state.data)
         assertEquals(1, state.data.first())
         assertEquals(10000, state.data.last())
     }
@@ -376,6 +385,7 @@ class ResponseStateTest {
         )
         val state = ResponseState.Success(nestedData)
 
+        assertNotNull(state.data)
         assertEquals(3, state.data.size)
         assertEquals(2, state.data[0][1])
         assertEquals(9, state.data[2][2])

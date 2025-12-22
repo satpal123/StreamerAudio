@@ -102,9 +102,13 @@ class GetStreamsByGameUseCaseTest {
         assertTrue(result[1] is ResponseState.Success)
         val successData = (result[1] as ResponseState.Success).data!!
         assertEquals(2, successData.first.size)
+        assertNotNull(successData)
         assertEquals("next_cursor_abc", successData.second)
+        assertNotNull(successData)
         assertEquals("stream1", successData.first[0].id)
+        assertNotNull(successData)
         assertEquals("Streamer One", successData.first[0].userName)
+        assertNotNull(successData)
         assertEquals(1000L, successData.first[0].viewerCount)
 
         coVerify(exactly = 1) {
