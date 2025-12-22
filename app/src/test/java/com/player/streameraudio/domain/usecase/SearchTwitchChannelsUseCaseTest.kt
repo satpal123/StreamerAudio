@@ -83,7 +83,7 @@ class SearchTwitchChannelsUseCaseTest {
 
         // Second emission: Success
         assertTrue(result[1] is ResponseState.Success)
-        val successData = result[1].data!!
+        val successData = (result[1] as ResponseState.Success).data!!
         assertEquals(2, successData.first.size)
         assertEquals("next_cursor_123", successData.second)
         assertEquals("channel1", successData.first[0].id)
