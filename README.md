@@ -20,10 +20,10 @@ An Android application that allows users to listen to live Twitch streams as aud
     <img src="screenshots/06_settings_screen.png" width="200" />    
 </p>
 <p align="center">
-<img src="screenshots/07_main_screen_aa.png" width="791" />
-    <img src="screenshots/08_main_screen_not_logged_in.png" width="791" />
-    <img src="screenshots/09_live_screen_notlogged_in.png" width="791" />
-    <img src="screenshots/10_player_screen.png" width="791" />
+<img src="screenshots/07_main_screen_aa.png" width="400" />
+    <img src="screenshots/08_main_screen_not_logged_in.png" width="400" />
+    <img src="screenshots/09_live_screen_notlogged_in.png" width="400" />
+    <img src="screenshots/10_player_screen.png" width="400" />
 </p>
 
 ## ✨ Features
