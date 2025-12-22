@@ -1,0 +1,57 @@
+name: Build Signed APK
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+
+      - name: Decode keystore
+        shell: bash
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > release.jks
+          echo "ANDROID_KEYSTORE_PATH=${{ github.workspace }}/release.jks" >> $GITHUB_ENV
+
+      - name: Build Release APK (signed)
+        env:
+          TWITCH_CLIENT_ID: ${{ secrets.TWITCH_CLIENT_ID }}
+          ANDROID_KEYSTORE_PATH: ${{ env.ANDROID_KEYSTORE_PATH }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew :app:assembleRelease --no-daemon
+
+      - name: Rename APK with version
+        shell: bash
+        run: |
+          VERSION_NAME=$(./gradlew :app:properties -q | sed -n 's/^versionName: //p' | head -n 1)
+          VERSION_CODE=$(./gradlew :app:properties -q | sed -n 's/^versionCode: //p' | head -n 1)
+
+          APK_IN=$(ls -1 app/build/outputs/apk/release/*.apk | head -n 1)
+          APK_OUT="StreamerAudio-v${VERSION_NAME}(${VERSION_CODE})-release-signed.apk"
+
+          cp "$APK_IN" "$APK_OUT"
+          echo "APK_OUT=$APK_OUT" >> $GITHUB_ENV
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APK_OUT }}
+          path: ${{ env.APK_OUT }}

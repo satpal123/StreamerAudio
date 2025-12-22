@@ -8,7 +8,7 @@ object Constants {
     const val TWITCH_HLS_BASE = "https://usher.ttvnw.net/api/channel/hls/"
     const val TWITCH_REDIRECT_URL = "http://localhost"
     val TWITCH_OAUTH_SCOPES = arrayOf("user:read:email", "user:read:follows")
-    const val TWITCH_CLIENT_ID = "YOUR_TWITCH_CLIENT_ID_HERE"
+    val TWITCH_CLIENT_ID: String = com.player.streameraudio.BuildConfig.TWITCH_CLIENT_ID
     const val TWITCH_GRAPHQL_CLIENT_ID = "kimne78kx3ncx6brgo4mv6wki5h1ko"
     const val TWITCH_BASE_URL = "https://api.twitch.tv/helix/"
     const val BACKEND_BASE_URL = "https://streameraudio-twitch-backend.netlify.app/.netlify/functions/"
