@@ -97,7 +97,7 @@ class ResponseStateTest {
         assertEquals(testData, state.data)
         assertNotNull(state.data)
         assertEquals(5, state.data!!.size)
-        assertEquals(1, state.data[0])
+        assertEquals(1, state.data!![0])
     }
 
     @Test
@@ -107,7 +107,7 @@ class ResponseStateTest {
 
         assertEquals(testData, state.data)
         assertNotNull(state.data)
-        assertEquals("value1", state.data["key1"])
+        assertEquals("value1", state.data!!["key1"])
         assertEquals(2, state.data!!.size)
     }
 
@@ -387,7 +387,7 @@ class ResponseStateTest {
 
         assertNotNull(state.data)
         assertEquals(3, state.data!!.size)
-        assertEquals(2, state.data[0][1])
-        assertEquals(9, state.data[2][2])
+        assertEquals(2, state.data!![0][1])
+        assertEquals(9, state.data!![2][2])
     }
 }
