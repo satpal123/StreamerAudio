@@ -71,7 +71,7 @@ ANDROID_KEY_PASSWORD
 ./gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleRelease :app:bundleRelease
 ```
 
-Use the Google Play **app-signing** certificate fingerprint—not the upload-key fingerprint—in the hosted `assetlinks.json`. Deployment and Play Console steps are tracked in [`play/RELEASE_CHECKLIST.md`](play/RELEASE_CHECKLIST.md).
+The checked-in `assetlinks.json` trusts the CI-signed pre-release APK and the local debug build. Before Play testing, add the Google Play **app-signing** certificate fingerprint to the release package entry as an additional fingerprint; Play-generated APKs are not signed with the upload key. Deployment and Play Console steps are tracked in [`play/RELEASE_CHECKLIST.md`](play/RELEASE_CHECKLIST.md).
 
 ## GitHub Actions
 
@@ -116,7 +116,7 @@ Authentication tokens are AES-GCM encrypted with a non-exportable Android Keysto
 - Support: <https://streameraudio-twitch-backend.netlify.app/support>
 - OAuth callback: <https://streameraudio-twitch-backend.netlify.app/oauth/callback>
 
-Deployable static source and the Digital Asset Links template are under [`play/netlify`](play/netlify).
+Deployable static source and the Digital Asset Links files are under [`play/netlify`](play/netlify). Deploy that directory whenever a signing fingerprint changes, then verify `/.well-known/assetlinks.json` returns the release package and certificate without a redirect.
 
 ## License
 

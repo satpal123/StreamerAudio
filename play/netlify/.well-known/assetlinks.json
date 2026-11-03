@@ -1,0 +1,22 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.player.streameraudio",
+      "sha256_cert_fingerprints": [
+        "A5:C6:89:52:97:F0:30:EB:3A:4B:F6:6D:66:A6:FB:82:BC:93:F1:6B:27:33:E3:2F:CB:21:B4:B6:CD:F2:07:EC"
+      ]
+    }
+  },
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.player.streameraudio.debug",
+      "sha256_cert_fingerprints": [
+        "C1:E4:7D:28:3A:91:3A:AF:21:E3:DF:BB:4C:7F:EC:0A:7C:A6:FA:58:B7:69:E7:A6:55:9E:C3:6A:3F:C5:07:89"
+      ]
+    }
+  }
+]

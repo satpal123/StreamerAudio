@@ -47,7 +47,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https"
                     android:host="streameraudio-twitch-backend.netlify.app"
-                    android:path="/oauth/callback" />
+                    android:pathPrefix="/oauth/callback" />
             </intent-filter>
         </activity>
 

@@ -5,7 +5,7 @@
 - [ ] Register the exact Twitch redirect URL: `https://streameraudio-twitch-backend.netlify.app/oauth/callback`
 - [ ] Create an RSA upload key outside the repository and back it up securely
 - [ ] Enrol `com.player.streameraudio` in Play App Signing
-- [ ] Replace the fingerprint placeholder in `netlify/.well-known/assetlinks.json.template` with the **Play app-signing** SHA-256 certificate fingerprint, rename it to `assetlinks.json`, deploy, and verify the URL returns JSON without redirects
+- [ ] Add the **Play app-signing** SHA-256 certificate fingerprint to the `com.player.streameraudio` entry in `netlify/.well-known/assetlinks.json`, deploy it, and verify the URL returns JSON without redirects. Keep the CI upload-key fingerprint only while distributing directly signed pre-release APKs.
 - [ ] Deploy `/privacy`, `/support`, and `/oauth/callback` over HTTPS
 - [ ] Configure protected CI signing variables documented in the root README
 - [ ] Confirm backend and hosting log retention for the Data Safety declaration

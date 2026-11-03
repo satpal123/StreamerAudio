@@ -233,6 +233,11 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch { validateAndSave(token) }
     }
 
+    fun reportAuthError(message: String) {
+        clearOAuthState()
+        _uiState.update { it.copy(errorMessage = message) }
+    }
+
     fun logout() {
         playbackConnection.stop()
         _uiState.update { it.copy(authenticated = false, userLogin = null, profileImageUrl = null, items = emptyList()) }

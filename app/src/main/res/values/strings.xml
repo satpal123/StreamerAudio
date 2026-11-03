@@ -4,5 +4,7 @@
     <string name="streamer_image">Streamer Image</string>
     <string name="notification_channel_name">streamer_audio</string>
     <string name="live">LIVE</string>
+    <string name="oauth_app_link_verification_failed">Secure Twitch sign-in is not configured for this app build. Update the site\'s Digital Asset Links file and try again.</string>
+    <string name="oauth_app_link_verification_timed_out">Twitch sign-in verification timed out. Check your connection and try again.</string>
     <!-- Strings used for fragments for navigation -->
 </resources>
