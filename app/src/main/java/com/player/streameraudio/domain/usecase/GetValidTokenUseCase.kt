@@ -29,6 +29,8 @@ class GetValidTokenUseCase @Inject constructor(
             }
 
             emit(ResponseState.Success(validationDTO))
+        } catch (e: IOException) {
+            emit(ResponseState.Error("Internet Error"))
         } catch (e: Exception) {
             // Handle different error cases
             val errorMessage = when {
@@ -37,8 +39,6 @@ class GetValidTokenUseCase @Inject constructor(
             }
             emit(ResponseState.Error(errorMessage))
 
-        } catch (e: IOException) {
-            emit(ResponseState.Error("Internet Error"))
         }
     }
 }

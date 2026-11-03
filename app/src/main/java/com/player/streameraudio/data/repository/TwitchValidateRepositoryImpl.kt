@@ -10,7 +10,12 @@ class TwitchValidateRepositoryImpl @Inject constructor(
     override suspend fun validateAccessToken(
         accessToken: String
     ): TwitchValidationDTO {
-        val authorization = "OAuth $accessToken"
+        val token = accessToken.trim()
+            .removePrefix("OAuth ")
+            .removePrefix("Bearer ")
+            .trim()
+        require(token.isNotEmpty()) { "Access token is empty" }
+        val authorization = "OAuth $token"
         return twitchOauthApiService.validateAccessToken(authorization)
     }
 }

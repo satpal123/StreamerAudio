@@ -1,14 +1,25 @@
 package com.player.streameraudio.presentation.di
 
 import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.core.DataStoreFactory
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
+import com.player.streameraudio.BuildConfig
+import com.player.streameraudio.data.auth.KeystoreTokenStore
+import com.player.streameraudio.data.auth.TokenStore
+import com.player.streameraudio.data.playback.StreamResolver
 import com.player.streameraudio.data.api.BackendApiService
 import com.player.streameraudio.data.api.TwitchApiService
 import com.player.streameraudio.data.api.TwitchOauthApiService
 import com.player.streameraudio.data.repository.BackendRepositoryImpl
+import com.player.streameraudio.data.repository.PlaybackSettingsRepositoryImpl
+import com.player.streameraudio.data.settings.UserSettings
+import com.player.streameraudio.data.settings.UserSettingsSerializer
 import com.player.streameraudio.data.repository.TwitchRepositoryImpl
 import com.player.streameraudio.data.repository.TwitchValidateRepositoryImpl
 import com.player.streameraudio.data.util.Constants
 import com.player.streameraudio.domain.repository.BackendRepository
+import com.player.streameraudio.domain.repository.PlaybackSettingsRepository
 import com.player.streameraudio.domain.repository.TwitchRepository
 import com.player.streameraudio.domain.repository.TwitchValidateRepository
 import com.player.streameraudio.domain.usecase.GetBackendCategoriesUseCase
@@ -30,6 +41,10 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import okhttp3.OkHttpClient
+import okhttp3.logging.HttpLoggingInterceptor
+import java.io.File
+import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
 
@@ -39,9 +54,27 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideTwitchApiService():TwitchApiService{
+    fun provideOkHttpClient(): OkHttpClient {
+        val logging = HttpLoggingInterceptor().apply {
+            level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC
+            else HttpLoggingInterceptor.Level.NONE
+            redactHeader("Authorization")
+            redactHeader("Client-Id")
+        }
+        return OkHttpClient.Builder()
+            .connectTimeout(12, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .callTimeout(25, TimeUnit.SECONDS)
+            .addInterceptor(logging)
+            .build()
+    }
+
+    @Provides
+    @Singleton
+    fun provideTwitchApiService(okHttpClient: OkHttpClient):TwitchApiService{
         return Retrofit.Builder()
             .baseUrl(Constants.TWITCH_BASE_URL)
+            .client(okHttpClient)
             .addConverterFactory((GsonConverterFactory.create()))
             .build()
             .create(TwitchApiService::class.java)
@@ -49,9 +82,10 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideTwitchValidateApiService(): TwitchOauthApiService {
+    fun provideTwitchValidateApiService(okHttpClient: OkHttpClient): TwitchOauthApiService {
         return Retrofit.Builder()
             .baseUrl(Constants.TWITCH_OAUTH_VALIDATE_ENDPOINT)
+            .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(TwitchOauthApiService::class.java)
@@ -59,9 +93,10 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideBackendApiService(): BackendApiService {
+    fun provideBackendApiService(okHttpClient: OkHttpClient): BackendApiService {
         return Retrofit.Builder()
             .baseUrl(Constants.BACKEND_BASE_URL)
+            .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(BackendApiService::class.java)
@@ -87,8 +122,24 @@ object NetworkModule {
 
     @Provides
     @Singleton
+    fun provideUserSettingsDataStore(@ApplicationContext context: Context): DataStore<UserSettings> =
+        DataStoreFactory.create(
+            serializer = UserSettingsSerializer(),
+            corruptionHandler = ReplaceFileCorruptionHandler { UserSettings() },
+            produceFile = { File(context.filesDir, "datastore/user_settings.json") }
+        )
+
+    @Provides
+    @Singleton
+    fun providePlaybackSettingsRepository(impl: PlaybackSettingsRepositoryImpl): PlaybackSettingsRepository = impl
+
+    @Provides
+    @Singleton
+    fun provideTokenStore(impl: KeystoreTokenStore): TokenStore = impl
+
+    @Provides
+    @Singleton
     fun provideMediaSessionCallback(
-        @ApplicationContext context: Context,
         twitchUserUseCase: GetTwitchUserUseCase,
         twitchStreamsUseCase: GetTwitchStreamsUseCase,
         twitchStreamsDetailsUseCase: GetTwitchStreamsDetailsUseCase,
@@ -99,9 +150,11 @@ object NetworkModule {
         getBackendCategoriesUseCase: GetBackendCategoriesUseCase,
         getBackendChannelsUseCase: GetBackendChannelsUseCase,
         getBackendTopStreamsUseCase: GetBackendTopStreamsUseCase,
-        getBackendProfileImageUseCase: GetBackendProfileImageUseCase
+        getBackendProfileImageUseCase: GetBackendProfileImageUseCase,
+        tokenStore: TokenStore,
+        playbackSettingsRepository: PlaybackSettingsRepository,
+        streamResolver: StreamResolver
     ): CustomMediaLibrarySessionCallback = CustomMediaLibrarySessionCallback(
-        context,
         twitchUserUseCase,
         twitchStreamsUseCase,
         twitchStreamsDetailsUseCase,
@@ -112,6 +165,9 @@ object NetworkModule {
         getBackendCategoriesUseCase,
         getBackendChannelsUseCase,
         getBackendTopStreamsUseCase,
-        getBackendProfileImageUseCase
+        getBackendProfileImageUseCase,
+        tokenStore,
+        playbackSettingsRepository,
+        streamResolver
     )
 }

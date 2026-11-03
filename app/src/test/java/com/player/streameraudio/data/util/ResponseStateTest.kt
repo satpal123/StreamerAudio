@@ -332,13 +332,15 @@ class ResponseStateTest {
 
         val errorState = ResponseState.Error("Error occurred", testData)
         val successState = ResponseState.Success(testData)
+        val errorAsState: ResponseState<*> = errorState
+        val successAsState: ResponseState<*> = successState
 
         assertEquals(testData, errorState.data)
         assertEquals(testData, successState.data)
         assertNotNull(errorState.message)
         assertNull(successState.message)
-        assertFalse(errorState is ResponseState.Success<*>)
-        assertFalse(successState is ResponseState.Error<*>)
+        assertFalse(errorAsState is ResponseState.Success<*>)
+        assertFalse(successAsState is ResponseState.Error<*>)
     }
 
     @Test

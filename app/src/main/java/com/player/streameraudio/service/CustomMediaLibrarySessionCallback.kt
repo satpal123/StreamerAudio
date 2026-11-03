@@ -1,12 +1,12 @@
 package com.player.streameraudio.service
 
-import android.content.Context
-import android.content.SharedPreferences
 import android.net.Uri
 import android.os.Bundle
 import androidx.annotation.OptIn
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
 import androidx.media3.common.util.Log
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.LibraryResult
@@ -14,15 +14,19 @@ import androidx.media3.session.MediaConstants
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.MediaSession
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionError
+import androidx.media3.session.SessionResult
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
-import com.player.streameraudio.data.api.TwitchGqlService
+import com.player.streameraudio.data.auth.TokenStore
+import com.player.streameraudio.data.playback.StreamResolver
+import com.player.streameraudio.data.settings.LastPlayedStream
 import com.player.streameraudio.data.util.Constants
-import com.player.streameraudio.data.util.ExtM3UParser
 import com.player.streameraudio.data.util.ResponseState
-import com.player.streameraudio.data.util.SecurePreferences
+import com.player.streameraudio.domain.repository.PlaybackSettingsRepository
 import com.player.streameraudio.domain.usecase.GetBackendCategoriesUseCase
 import com.player.streameraudio.domain.usecase.GetBackendChannelsUseCase
 import com.player.streameraudio.domain.usecase.GetBackendProfileImageUseCase
@@ -34,29 +38,25 @@ import com.player.streameraudio.domain.usecase.GetTwitchStreamsDetailsUseCase
 import com.player.streameraudio.domain.usecase.GetTwitchStreamsUseCase
 import com.player.streameraudio.domain.usecase.GetTwitchUserUseCase
 import com.player.streameraudio.domain.usecase.SearchTwitchChannelsUseCase
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.future.future
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import java.net.URLDecoder
-import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import android.util.Log as AndroidLog
 
 
 class CustomMediaLibrarySessionCallback @Inject constructor(
-    @ApplicationContext private val context: Context,
     private val twitchUserUseCase: GetTwitchUserUseCase,
     private val twitchStreamsUseCase: GetTwitchStreamsUseCase,
     private val twitchStreamsDetailsUseCase: GetTwitchStreamsDetailsUseCase,
@@ -67,15 +67,15 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
     private val getBackendCategoriesUseCase: GetBackendCategoriesUseCase,
     private val getBackendChannelsUseCase: GetBackendChannelsUseCase,
     private val getBackendTopStreamsUseCase: GetBackendTopStreamsUseCase,
-    private val getBackendProfileImageUseCase: GetBackendProfileImageUseCase
+    private val getBackendProfileImageUseCase: GetBackendProfileImageUseCase,
+    private val tokenStore: TokenStore,
+    private val playbackSettingsRepository: PlaybackSettingsRepository,
+    private val streamResolver: StreamResolver
 ) : MediaLibrarySession.Callback {
 
     private var streamUrl: String? = null
     private val coroutineScope = CoroutineScope(Dispatchers.Main + Job())
-
-    private val securePrefs: SharedPreferences by lazy {
-        SecurePreferences.getEncryptedSharedPreferences(context)
-    }
+    private var sleepTimerJob: Job? = null
 
     // Cache browse metadata by mediaId so Now Playing shows correct values.
     private data class CachedPlayable(
@@ -109,6 +109,127 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
         avatarCache.clear()
         cursorCache.clear()
         streamUrl = null
+    }
+
+    @OptIn(UnstableApi::class)
+    override fun onConnect(
+        session: MediaSession,
+        controller: MediaSession.ControllerInfo
+    ): MediaSession.ConnectionResult {
+        val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
+            .add(SessionCommand(PlaybackService.COMMAND_RETRY_STREAM, Bundle.EMPTY))
+            .add(SessionCommand(PlaybackService.COMMAND_SET_SLEEP_TIMER, Bundle.EMPTY))
+            .add(SessionCommand(PlaybackService.COMMAND_CANCEL_SLEEP_TIMER, Bundle.EMPTY))
+            .build()
+        val playerCommands = MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon()
+            .remove(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
+            .remove(Player.COMMAND_SEEK_BACK)
+            .remove(Player.COMMAND_SEEK_FORWARD)
+            .remove(Player.COMMAND_SEEK_TO_DEFAULT_POSITION)
+            .remove(Player.COMMAND_SEEK_TO_MEDIA_ITEM)
+            .remove(Player.COMMAND_SEEK_TO_PREVIOUS)
+            .remove(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+            .remove(Player.COMMAND_SEEK_TO_NEXT)
+            .remove(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+            .build()
+        return MediaSession.ConnectionResult.accept(
+            commands,
+            playerCommands
+        )
+    }
+
+    @OptIn(UnstableApi::class)
+    override fun onPlaybackResumption(
+        mediaSession: MediaSession,
+        controller: MediaSession.ControllerInfo,
+        isForPlayback: Boolean
+    ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+        val future = SettableFuture.create<MediaSession.MediaItemsWithStartPosition>()
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                val lastPlayed = playbackSettingsRepository.getLastPlayedStream()
+                    ?: throw IllegalStateException("No previous stream is available to resume")
+                val extras = Bundle().apply {
+                    lastPlayed.userLogin?.let { putString("userLogin", it) }
+                    lastPlayed.startedAtEpochMs?.let { putLong(EXTRA_STARTED_AT_MS, it) }
+                }
+                val metadata = MediaMetadata.Builder()
+                    .setTitle(lastPlayed.title)
+                    .setArtist(lastPlayed.artist)
+                    .setArtworkUri(lastPlayed.artworkUrl?.let(Uri::parse))
+                    .setExtras(extras)
+                    .setIsBrowsable(false)
+                    .setIsPlayable(true)
+                    .setMediaType(MediaMetadata.MEDIA_TYPE_RADIO_STATION)
+                    .build()
+                val item = if (isForPlayback) {
+                    val login = lastPlayed.userLogin?.takeIf { it.isNotBlank() }
+                        ?: lastPlayed.mediaId
+                    val resolvedUrl = streamResolver.resolve(login)
+                        ?: throw IllegalStateException("The previous stream is no longer live")
+                    createLiveMediaItem(
+                        mediaId = lastPlayed.mediaId,
+                        title = lastPlayed.title,
+                        artist = lastPlayed.artist,
+                        artwork = lastPlayed.artworkUrl?.let(Uri::parse) ?: Uri.EMPTY,
+                        streamUrl = Uri.parse(resolvedUrl),
+                        startedAtMs = lastPlayed.startedAtEpochMs,
+                        userLogin = login
+                    )
+                } else {
+                    MediaItem.Builder()
+                        .setMediaId(lastPlayed.mediaId)
+                        .setMediaMetadata(metadata)
+                        .build()
+                }
+                future.set(
+                    MediaSession.MediaItemsWithStartPosition(
+                        listOf(item),
+                        0,
+                        C.TIME_UNSET
+                    )
+                )
+            } catch (error: Exception) {
+                future.setException(error)
+            }
+        }
+        return future
+    }
+
+    override fun onCustomCommand(
+        session: MediaSession,
+        controller: MediaSession.ControllerInfo,
+        customCommand: SessionCommand,
+        args: Bundle
+    ): ListenableFuture<SessionResult> {
+        when (customCommand.customAction) {
+            PlaybackService.COMMAND_RETRY_STREAM -> {
+                session.player.currentMediaItem?.let { current ->
+                    session.player.setMediaItem(
+                        MediaItem.Builder().setMediaId(current.mediaId).setMediaMetadata(current.mediaMetadata).build()
+                    )
+                    session.player.prepare()
+                    session.player.play()
+                }
+            }
+            PlaybackService.COMMAND_SET_SLEEP_TIMER -> {
+                val duration = args.getLong("duration_ms").coerceAtLeast(60_000L)
+                sleepTimerJob?.cancel()
+                sleepTimerJob = coroutineScope.launch {
+                    playbackSettingsRepository.setSleepTimerDeadline(System.currentTimeMillis() + duration)
+                    delay(duration)
+                    session.player.pause()
+                    playbackSettingsRepository.setSleepTimerDeadline(null)
+                }
+            }
+            PlaybackService.COMMAND_CANCEL_SLEEP_TIMER -> {
+                sleepTimerJob?.cancel()
+                sleepTimerJob = null
+                coroutineScope.launch { playbackSettingsRepository.setSleepTimerDeadline(null) }
+            }
+            else -> return Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
+        }
+        return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
     }
 
     companion object {
@@ -200,7 +321,7 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
         val future = SettableFuture.create<LibraryResult<ImmutableList<MediaItem>>>()
 
         coroutineScope.future(Dispatchers.IO) {
-            val accessToken = securePrefs.getString(Constants.PREF_ACCESS_TOKEN, null)
+            val accessToken = tokenStore.read()?.accessToken
             val bearer = accessToken?.takeIf { it.isNotBlank() }?.let { "Bearer $it" }
 
             if (bearer == null) {
@@ -255,8 +376,9 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
         val future = SettableFuture.create<LibraryResult<ImmutableList<MediaItem>>>()
         coroutineScope.future(Dispatchers.IO) {
 
-            val accessToken = securePrefs.getString(Constants.PREF_ACCESS_TOKEN, null)
-            val loggedinUserId = securePrefs.getString(Constants.PREF_USER_ID, null)
+            val authSession = tokenStore.read()
+            val accessToken = authSession?.accessToken
+            val loggedinUserId = authSession?.userId
             val bearer = accessToken?.takeIf { it.isNotBlank() }?.let { "Bearer $it" }
 
             AndroidLog.d("MediaSession", "onGetChildren auth check: token=${accessToken?.take(10)}, userId=$loggedinUserId, bearer=${bearer != null}")
@@ -384,11 +506,8 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
         val mediaId = mediaItems.firstOrNull()?.mediaId.toString()
         val existingUri = mediaItems.firstOrNull()?.localConfiguration?.uri
 
-        val accessToken = securePrefs.getString(Constants.PREF_ACCESS_TOKEN, null)
+        val accessToken = tokenStore.read()?.accessToken
         val bearer = accessToken?.takeIf { it.isNotBlank() }?.let { "Bearer $it" }
-
-        val streamSource = Constants.getStreamSource(context)
-        val selectedProxy = Constants.getProxyUrl(context)
 
         if (existingUri != null) {
             future.set(MediaSession.MediaItemsWithStartPosition(mediaItems, 0, 0L))
@@ -424,24 +543,11 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
                         extras?.getLong(EXTRA_STARTED_AT_MS)?.takeIf { it > 0 }
                             ?: cached?.startedAtMs
 
-                    // âœ… Playback artwork: prefer profile image (avatar). Fallback to whatever the list item had (thumbnail).
+                    // Playback artwork is the channel avatar only. Stream thumbnails are list artwork.
                     val avatar = getAvatarUriUnauth(streamerLogin)
-                    val artwork = avatar
-                        ?: incomingMeta?.artworkUri
-                        ?: cached?.artwork
-                        ?: Uri.EMPTY
+                    val artwork = avatar ?: Uri.EMPTY
 
-                    val primaryUrl = when (streamSource) {
-                        Constants.STREAM_SOURCE_HLS -> fetchHlsStreamUrl(streamerLogin)
-                        else -> fetchProxyStreamUrl(streamerLogin, selectedProxy)
-                    }
-
-                    val finalUrl = primaryUrl ?: run {
-                        when (streamSource) {
-                            Constants.STREAM_SOURCE_HLS -> fetchProxyStreamUrl(streamerLogin, selectedProxy)
-                            else -> fetchHlsStreamUrl(streamerLogin)
-                        }
-                    }
+                    val finalUrl = streamResolver.resolve(streamerLogin)
 
                     streamUrl = finalUrl
 
@@ -452,8 +558,10 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
                             artist = artist,
                             artwork = artwork,
                             streamUrl = Uri.parse(streamUrl),
-                            startedAtMs = startedAtMs
+                            startedAtMs = startedAtMs,
+                            userLogin = streamerLogin
                         )
+                        rememberLastPlayed(mediaId, title, artist, artwork, streamerLogin, startedAtMs)
                         childItems.add(mediaItem)
                         if (!future.isDone) {
                             future.set(MediaSession.MediaItemsWithStartPosition(childItems, 0, 0L))
@@ -467,22 +575,11 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
                 // Authenticated playback
                 twitchUserUseCase(mediaId, null, bearer, Constants.TWITCH_CLIENT_ID).collect { userResult ->
                     if (userResult is ResponseState.Success) {
-                        val user = userResult.data?.firstOrNull()
-                        val artworkUriStr = user?.profileImageUrl
-                        val displayName = user?.displayName ?: return@collect
-                        val loginName = (user.login ?: displayName).trim().lowercase()
+                        val user = userResult.data?.firstOrNull() ?: return@collect
+                        val artworkUriStr = user.profileImageUrl
+                        val loginName = user.login.trim().lowercase()
 
-                        val primaryUrl = when (streamSource) {
-                            Constants.STREAM_SOURCE_HLS -> fetchHlsStreamUrl(loginName)
-                            else -> fetchProxyStreamUrl(loginName, selectedProxy)
-                        }
-
-                        val finalUrl = primaryUrl ?: run {
-                            when (streamSource) {
-                                Constants.STREAM_SOURCE_HLS -> fetchProxyStreamUrl(loginName, selectedProxy)
-                                else -> fetchHlsStreamUrl(loginName)
-                            }
-                        }
+                        val finalUrl = streamResolver.resolve(loginName)
 
                         streamUrl = finalUrl
 
@@ -494,7 +591,7 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
                                     val startedAtMs = parseTwitchIsoToMs(details?.startedAt)
 
                                     val artworkUri = try {
-                                        artworkUriStr?.let { Uri.parse(it) } ?: Uri.EMPTY
+                                        Uri.parse(artworkUriStr)
                                     } catch (_: Exception) {
                                         Uri.EMPTY
                                     }
@@ -505,7 +602,16 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
                                         artist = userName,
                                         artwork = artworkUri,
                                         streamUrl = Uri.parse(streamUrl),
-                                        startedAtMs = startedAtMs
+                                        startedAtMs = startedAtMs,
+                                        userLogin = loginName
+                                    )
+                                    rememberLastPlayed(
+                                        mediaId,
+                                        details?.title.orEmpty(),
+                                        userName,
+                                        artworkUri,
+                                        loginName,
+                                        startedAtMs
                                     )
                                     childItems.add(mediaItem)
 
@@ -620,36 +726,25 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
 
         // TOP_GAMES
         if (parentId == TOP_GAMES) {
-            if (bearer.isNullOrBlank()) {
-                // Backend response
-                val state = awaitNonLoading(getBackendCategoriesUseCase(cursor))
-                return when (state) {
-                    is ResponseState.Error -> Pair(emptyList(), null)
-                    is ResponseState.Success -> {
-                        val (games, nextCursor) = state.data ?: Pair(emptyList(), null)
-                        val items = games.take(maxItems).map { game ->
-                            val art = try { Uri.parse(game.boxArtUrl) } catch (_: Exception) { null }
-                            createBrowsableItem("$GAME_PREFIX${game.id}", game.name, null, art)
-                        }
-                        Pair(items, nextCursor)
+            // The backend enriches categories with aggregate viewer counts and works for
+            // both guests and authenticated users, keeping Browse visually consistent.
+            val state = awaitNonLoading(getBackendCategoriesUseCase(cursor))
+            return when (state) {
+                is ResponseState.Error -> Pair(emptyList(), null)
+                is ResponseState.Success -> {
+                    val (games, nextCursor) = state.data ?: Pair(emptyList(), null)
+                    val items = games.take(maxItems).map { game ->
+                        val art = try { Uri.parse(game.boxArtUrl) } catch (_: Exception) { null }
+                        createBrowsableItem(
+                            mediaId = "$GAME_PREFIX${game.id}",
+                            title = game.name,
+                            artwork = art,
+                            viewerCount = game.viewers.toString()
+                        )
                     }
-                    else -> Pair(emptyList(), null)
+                    Pair(items, nextCursor)
                 }
-            } else {
-                // Twitch API response
-                val state = awaitNonLoading(getTopGamesUseCase(bearer, Constants.TWITCH_CLIENT_ID, cursor))
-                return when (state) {
-                    is ResponseState.Error -> Pair(emptyList(), null)
-                    is ResponseState.Success -> {
-                        val (games, nextCursor) = state.data ?: Pair(emptyList(), null)
-                        val items = games.take(maxItems).map { game ->
-                            val art = try { Uri.parse(game.boxArtUrl.replace("{width}", "285").replace("{height}", "380")) } catch (_: Exception) { null }
-                            createBrowsableItem("$GAME_PREFIX${game.id}", game.name, null, art)
-                        }
-                        Pair(items, nextCursor)
-                    }
-                    else -> Pair(emptyList(), null)
-                }
+                else -> Pair(emptyList(), null)
             }
         }
 
@@ -761,97 +856,6 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
         }
     }
 
-    // -------------------- Stream URL fetchers --------------------
-
-    private suspend fun fetchHlsStreamUrl(channelName: String): String? = withContext(Dispatchers.IO) {
-        try {
-            val normalized = channelName.trim().lowercase()
-            AndroidLog.d("MediaSession", "Fetching HLS token for $normalized")
-
-            val tokenPair = TwitchGqlService.getPlaybackAccessToken(
-                normalized,
-                Constants.TWITCH_GRAPHQL_CLIENT_ID
-            )
-
-            if (tokenPair == null) {
-                AndroidLog.e("MediaSession", "Failed to get HLS token for $normalized")
-                return@withContext null
-            }
-
-            val (token, signature) = tokenPair
-            val hlsUrl = TwitchGqlService.buildHlsUrl(normalized, token, signature)
-            val audioUrl = parseHlsMasterForAudio(hlsUrl)
-
-            audioUrl ?: hlsUrl
-        } catch (e: Exception) {
-            AndroidLog.e("MediaSession", "Error fetching HLS URL for $channelName", e)
-            null
-        }
-    }
-
-    private suspend fun parseHlsMasterForAudio(masterUrl: String): String? = withContext(Dispatchers.IO) {
-        try {
-            val client = OkHttpClient.Builder()
-                .connectTimeout(10, TimeUnit.SECONDS)
-                .readTimeout(10, TimeUnit.SECONDS)
-                .build()
-
-            val request = Request.Builder()
-                .url(masterUrl)
-                .header("User-Agent", Constants.USER_AGENT)
-                .build()
-
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) return@withContext null
-
-            val body = response.body?.string() ?: return@withContext null
-            val entries = ExtM3UParser().parse(body)
-            entries.firstOrNull { it.name == "audio_only" }?.playlistUrl
-        } catch (e: Exception) {
-            AndroidLog.e("MediaSession", "Error parsing HLS master", e)
-            null
-        }
-    }
-
-    @OptIn(UnstableApi::class)
-    private suspend fun fetchProxyStreamUrl(channelLogin: String, proxyUrl: String): String? = withContext(Dispatchers.IO) {
-        val safeLogin = channelLogin.trim().lowercase()
-        val encodedLogin = try { URLEncoder.encode(safeLogin, "UTF-8") } catch (_: Exception) { safeLogin }
-
-        val attempts = listOf(
-            "$proxyUrl/live/$encodedLogin?allow_source=true&allow_audio_only=true&fast_bread=true",
-            "$proxyUrl/live/$encodedLogin?allow_source=true&allow_audio_only=true&fast_bread=false"
-        )
-
-        val client = OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(10, TimeUnit.SECONDS)
-            .build()
-
-        for (url in attempts) {
-            try {
-                val request = Request.Builder().url(url).header("User-Agent", Constants.USER_AGENT).build()
-                val response = client.newCall(request).execute()
-                if (!response.isSuccessful) {
-                    AndroidLog.w("MediaSession", "Proxy request failed: ${response.code} (url=$url)")
-                    continue
-                }
-
-                val body = response.body?.string() ?: continue
-                val entries = ExtM3UParser().parse(body)
-
-                val audio = entries.firstOrNull { it.name == "audio_only" }?.playlistUrl
-                if (!audio.isNullOrBlank()) return@withContext audio
-
-                val fallback = entries.firstOrNull()?.playlistUrl
-                if (!fallback.isNullOrBlank()) return@withContext fallback
-            } catch (e: Exception) {
-                Log.e("MediaSession", "Error fetching proxy URL (url=$url)", e)
-            }
-        }
-        null
-    }
-
     // -------------------- MediaItem builders --------------------
 
     private fun createPlayableStreamItem(
@@ -899,7 +903,9 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
         mediaId: String,
         title: String,
         subtitle: String? = null,
-        artwork: Uri? = null
+        artwork: Uri? = null,
+        viewerCount: String? = null,
+        tags: List<String> = emptyList()
     ): MediaItem {
         val meta = MediaMetadata.Builder()
             .setTitle(title)
@@ -907,6 +913,10 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
             .setIsBrowsable(true)
             .setIsPlayable(false)
         if (artwork != null) meta.setArtworkUri(artwork)
+        meta.setExtras(Bundle().apply {
+            viewerCount?.let { putString("viewerCount", it) }
+            if (tags.isNotEmpty()) putStringArrayList("tags", ArrayList(tags))
+        })
 
         return MediaItem.Builder()
             .setMediaId(mediaId)
@@ -920,12 +930,14 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
         artist: String,
         artwork: Uri,
         streamUrl: Uri,
-        startedAtMs: Long?
+        startedAtMs: Long?,
+        userLogin: String
     ): MediaItem {
         val uptimeString = if (startedAtMs != null) " - ${formatUptime(startedAtMs)}" else " - Live"
         val compositeArtist = "$artist$uptimeString"
         val extras = Bundle().apply {
             if (startedAtMs != null) putLong(EXTRA_STARTED_AT_MS, startedAtMs)
+            putString("userLogin", userLogin)
         }
 
         return MediaItem.Builder()
@@ -948,6 +960,30 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
                     .build()
             )
             .build()
+    }
+
+    private suspend fun rememberLastPlayed(
+        mediaId: String,
+        title: String,
+        artist: String,
+        artwork: Uri,
+        userLogin: String,
+        startedAtMs: Long?
+    ) {
+        runCatching {
+            playbackSettingsRepository.setLastPlayedStream(
+                LastPlayedStream(
+                    mediaId = mediaId,
+                    title = title.ifBlank { "Live" },
+                    artist = artist.ifBlank { userLogin },
+                    artworkUrl = artwork.toString().takeIf { it.isNotBlank() },
+                    userLogin = userLogin,
+                    startedAtEpochMs = startedAtMs
+                )
+            )
+        }.onFailure {
+            AndroidLog.w("MediaSession", "Could not save playback resumption metadata", it)
+        }
     }
 
     private val rootMediaItem: MediaItem by lazy {

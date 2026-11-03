@@ -1,135 +1,150 @@
+import java.util.Properties
+
 plugins {
-    alias(libs.plugins.androidApplication)
-    alias(libs.plugins.jetbrainsKotlinAndroid)
-
-    id("com.google.relay") version "0.3.10"
-
-    // align with Kotlin 1.9.21
-    kotlin("plugin.serialization") version "1.9.21"
-
-    // IMPORTANT: no version here (it's already on classpath from root)
-    id("com.google.devtools.ksp")
-
-    id("com.google.dagger.hilt.android")
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.androidx.baselineprofile)
+    alias(libs.plugins.compose.compiler)
+    alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.hilt)
 }
 
 android {
     namespace = "com.player.streameraudio"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.player.streameraudio"
         minSdk = 26
-        targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
-
-        val twitchClientId =
-            (project.findProperty("TWITCH_CLIENT_ID") as String?)
-                ?: System.getenv("TWITCH_CLIENT_ID")
-                ?: ""
-
+        targetSdk = 36
+        versionCode = 2
+        versionName = "2.0.0"
+        val localProperties = Properties().apply {
+            rootProject.file("local.properties").takeIf { it.isFile }?.inputStream()?.use { load(it) }
+        }
+        val twitchClientId = (project.findProperty("TWITCH_CLIENT_ID") as String?)
+            ?: System.getenv("TWITCH_CLIENT_ID")
+            ?: localProperties.getProperty("TWITCH_CLIENT_ID")
+            ?: ""
         buildConfigField("String", "TWITCH_CLIENT_ID", "\"$twitchClientId\"")
-
+        buildConfigField("String", "TWITCH_REDIRECT_URL", "\"https://streameraudio-twitch-backend.netlify.app/oauth/callback\"")
+        manifestPlaceholders["appLabel"] = "Streamer Audio"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
         create("release") {
-            val ksPath = System.getenv("ANDROID_KEYSTORE_PATH")
-            val ksPassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
-            val keyAlias = System.getenv("ANDROID_KEY_ALIAS")
-            val keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
-
-            if (!ksPath.isNullOrBlank()) {
-                storeFile = file(ksPath)
-                storePassword = ksPassword
-                this.keyAlias = keyAlias
-                this.keyPassword = keyPassword
+            val path = System.getenv("ANDROID_KEYSTORE_PATH")
+            val password = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+            val aliasValue = System.getenv("ANDROID_KEY_ALIAS")
+            val keyPasswordValue = System.getenv("ANDROID_KEY_PASSWORD")
+            if (!path.isNullOrBlank() && !password.isNullOrBlank() && !aliasValue.isNullOrBlank() && !keyPasswordValue.isNullOrBlank()) {
+                storeFile = file(path)
+                storePassword = password
+                keyAlias = aliasValue
+                keyPassword = keyPasswordValue
             }
         }
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+            manifestPlaceholders["appLabel"] = "Streamer Audio Debug"
+            buildConfigField("boolean", "USE_DEMO_CONTENT", "false")
+        }
+        create("screenshot") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".screenshots"
+            versionNameSuffix = "-screenshots"
+            manifestPlaceholders["appLabel"] = "Streamer Audio Screenshots"
+            buildConfigField("boolean", "USE_DEMO_CONTENT", "true")
+            matchingFallbacks += listOf("debug")
+        }
         release {
-            isMinifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
-            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("release")
+            buildConfigField("boolean", "USE_DEMO_CONTENT", "false")
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
-    }
-    kotlinOptions {
-        jvmTarget = "1.8"
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures {
-        viewBinding = true
+        compose = true
         buildConfig = true
     }
-
+    packaging.resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+    testOptions.unitTests.isIncludeAndroidResources = true
+    lint {
+        abortOnError = true
+        checkReleaseBuilds = true
+    }
 }
-hilt {
-    enableAggregatingTask = true
+
+hilt { enableAggregatingTask = true }
+
+baselineProfile {
+    mergeIntoMain = true
+    automaticGenerationDuringBuild = false
 }
 
 dependencies {
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.appcompat)
-    implementation(libs.material)
-    implementation(libs.androidx.activity)
-    implementation(libs.androidx.constraintlayout)
-    implementation(libs.androidx.navigation.fragment.ktx)
-    implementation(libs.androidx.navigation.ui.ktx)
-    implementation(libs.androidx.lifecycle.livedata.ktx)
-    implementation(libs.androidx.browser)
-    implementation(libs.androidx.swiperefreshlayout)
-    testImplementation(libs.junit)
-    testImplementation("io.mockk:mockk:1.12.5")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
-    androidTestImplementation(libs.androidx.junit)
-    androidTestImplementation(libs.androidx.espresso.core)
-
-    //coroutines
-    implementation(libs.kotlinx.coroutines.android)
-
-    //hilt
-    ksp(libs.dagger.compiler) // Dagger compiler
-    ksp(libs.hilt.compiler.v251)   // Hilt compiler
-    ksp(libs.androidx.room.compiler)
-    ksp(libs.androidx.hilt.compiler)
-    implementation(libs.hilt.android)
-
-    //retrofit
-    implementation(libs.retrofit)
-    implementation(libs.okhttp)
-    implementation(libs.logging.interceptor)
-    implementation(libs.converter.gson)
-    implementation(libs.converter.scalars)
-
-    //ktx
-    implementation(libs.androidx.activity.ktx)
-    implementation(libs.androidx.fragment.ktx)
-    implementation(libs.androidx.lifecycle.viewmodel.ktx)
+    implementation(libs.androidx.core.splashscreen)
+    implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.ktx)
-
-    // glide
-    implementation(libs.glide)
-    annotationProcessor(libs.compiler)
-
-    //media3
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.navigation.compose)
+    implementation(libs.androidx.browser)
+    implementation(libs.androidx.datastore)
+    implementation(libs.androidx.security.crypto)
+    implementation(libs.androidx.profileinstaller)
+    baselineProfile(project(":baselineprofile"))
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.ui)
+    implementation(libs.compose.ui.tooling.preview)
+    implementation(libs.compose.material3)
+    implementation(libs.compose.material.icons)
+    debugImplementation(libs.compose.ui.tooling)
+    debugImplementation(libs.compose.ui.test.manifest)
     implementation(libs.androidx.media3.exoplayer)
-    implementation(libs.androidx.media3.ui)
+    implementation(libs.androidx.media3.exoplayer.hls)
     implementation(libs.androidx.media3.common)
     implementation(libs.androidx.media3.session)
-    implementation(libs.androidx.media3.exoplayer.hls)
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.compiler)
+    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.kotlinx.coroutines.guava)
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.converter.gson)
+    implementation(libs.retrofit.converter.scalars)
+    implementation(platform(libs.okhttp.bom))
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.logging)
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
+    testImplementation(libs.junit)
+    testImplementation(libs.mockk)
+    testImplementation(libs.kotlinx.coroutines.test)
+    androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.espresso.core)
+    androidTestImplementation(libs.compose.ui.test.junit4)
+}
 
-    // Encrypted SharedPreferences
-    implementation("androidx.security:security-crypto:1.1.0")
-
-    implementation("androidx.core:core-splashscreen:1.0.1")
+tasks.configureEach {
+    if (name == "bundleRelease" || name == "assembleRelease") {
+        doFirst {
+            val required = listOf("ANDROID_KEYSTORE_PATH", "ANDROID_KEYSTORE_PASSWORD", "ANDROID_KEY_ALIAS", "ANDROID_KEY_PASSWORD")
+            val missing = required.filter { System.getenv(it).isNullOrBlank() }
+            check(missing.isEmpty()) { "Release signing is not configured. Missing: ${missing.joinToString()}" }
+        }
+    }
 }

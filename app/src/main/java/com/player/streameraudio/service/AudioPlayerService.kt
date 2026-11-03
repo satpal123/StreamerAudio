@@ -1,7 +1,6 @@
 package com.player.streameraudio.service
 
 import android.content.ComponentName
-import android.content.SharedPreferences
 import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
@@ -24,12 +23,20 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.MoreExecutors
 import com.player.streameraudio.data.util.Constants
-import com.player.streameraudio.data.util.SecurePreferences
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
 @AndroidEntryPoint
 open class AudioPlayerService : MediaLibraryService() {
+
+  private companion object {
+    // Audio-only streams are inexpensive to buffer. A larger time-based cushion is preferable
+    // to repeatedly dropping in and out of playback on unstable mobile connections.
+    const val MIN_BUFFER_MS = 60_000
+    const val MAX_BUFFER_MS = 180_000
+    const val BUFFER_FOR_PLAYBACK_MS = 3_000
+    const val BUFFER_AFTER_REBUFFER_MS = 12_000
+  }
 
   protected var player: ExoPlayer? = null
   protected var mediaLibrarySession: MediaLibrarySession? = null
@@ -39,10 +46,6 @@ open class AudioPlayerService : MediaLibraryService() {
 
   @Inject
   lateinit var customMediaLibrarySessionCallback: CustomMediaLibrarySessionCallback
-
-  private val securePrefs: SharedPreferences by lazy {
-    SecurePreferences.getEncryptedSharedPreferences(this)
-  }
 
   @OptIn(UnstableApi::class)
   override fun onCreate() {
@@ -64,7 +67,13 @@ open class AudioPlayerService : MediaLibraryService() {
 
     val loadControl = DefaultLoadControl.Builder()
       .setAllocator(DefaultAllocator(true, C.DEFAULT_BUFFER_SEGMENT_SIZE))
-      .setBufferDurationsMs(30_000, 120_000, 2_000, 5_000)
+      .setBufferDurationsMs(
+        MIN_BUFFER_MS,
+        MAX_BUFFER_MS,
+        BUFFER_FOR_PLAYBACK_MS,
+        BUFFER_AFTER_REBUFFER_MS
+      )
+      .setPrioritizeTimeOverSizeThresholds(true)
       .build()
 
     player = ExoPlayer.Builder(this)
@@ -85,11 +94,20 @@ open class AudioPlayerService : MediaLibraryService() {
     val forwardingPlayer = object : ForwardingPlayer(player!!) {
       override fun getAvailableCommands(): Player.Commands =
         super.getAvailableCommands().buildUpon()
+          .remove(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
           .remove(Player.COMMAND_SEEK_BACK)
           .remove(Player.COMMAND_SEEK_FORWARD)
+          .remove(Player.COMMAND_SEEK_TO_DEFAULT_POSITION)
+          .remove(Player.COMMAND_SEEK_TO_MEDIA_ITEM)
+          .remove(Player.COMMAND_SEEK_TO_PREVIOUS)
+          .remove(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+          .remove(Player.COMMAND_SEEK_TO_NEXT)
+          .remove(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
           .build()
 
       override fun getDuration(): Long = C.TIME_UNSET
+
+      override fun isCurrentMediaItemSeekable(): Boolean = false
     }
 
     mediaLibrarySession = MediaLibrarySession.Builder(

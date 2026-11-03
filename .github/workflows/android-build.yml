@@ -1,17 +1,30 @@
-name: Build Signed APK
+name: Android CI and Release
 
 on:
+  pull_request:
+    branches: [main, develop]
   push:
-    branches: ["main"]
+    branches: [main, develop]
     tags: ["v*"]
   workflow_dispatch:
 
+concurrency:
+  group: android-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type == 'branch' }}
+
 permissions:
-  contents: write
+  contents: read
+
+env:
+  JAVA_VERSION: "17"
 
 jobs:
-  build:
+  verify:
+    name: Test, lint, and debug APK
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TWITCH_CLIENT_ID: ${{ secrets.TWITCH_CLIENT_ID }}
 
     steps:
       - name: Checkout
@@ -21,107 +34,169 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: ${{ env.JAVA_VERSION }}
           cache: gradle
 
-      - name: Grant execute permission for gradlew
+      - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 
-      # ---------- PR builds (no secrets) ----------
-      - name: Build Debug APK (PR-safe)
-        if: github.event_name == 'pull_request'
-        run: ./gradlew :app:assembleDebug --no-daemon
+      - name: Run unit tests, release lint, and debug build
+        run: ./gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleDebug --no-daemon
 
-      - name: Rename Debug APK (PR-safe)
-        if: github.event_name == 'pull_request'
+      - name: Prepare debug APK
+        id: debug_artifact
+        shell: bash
         run: |
           set -euo pipefail
-          SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-7)"
+          SHORT_SHA="${GITHUB_SHA:0:7}"
           META="app/build/outputs/apk/debug/output-metadata.json"
-
           VERSION_NAME="$(jq -r '.elements[0].versionName' "$META")"
           OUTPUT_FILE="$(jq -r '.elements[0].outputFile' "$META")"
+          OUTPUT_DIR="artifacts/debug"
+          OUTPUT_NAME="StreamerAudio-v${VERSION_NAME}-${SHORT_SHA}-debug.apk"
 
-          APK_IN="app/build/outputs/apk/debug/${OUTPUT_FILE}"
-          APK_OUT="StreamerAudio-v${VERSION_NAME}-${SHORT_SHA}-debug.apk"
+          mkdir -p "$OUTPUT_DIR"
+          cp "app/build/outputs/apk/debug/${OUTPUT_FILE}" "${OUTPUT_DIR}/${OUTPUT_NAME}"
+          echo "name=StreamerAudio-v${VERSION_NAME}-${SHORT_SHA}-debug" >> "$GITHUB_OUTPUT"
 
-          cp "$APK_IN" "$APK_OUT"
-          echo "Created: $APK_OUT"
-
-      - name: Upload Debug APK artifact (PR-safe)
-        if: github.event_name == 'pull_request'
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: StreamerAudio-debug-apk
-          path: StreamerAudio-v*-debug.apk
+          name: ${{ steps.debug_artifact.outputs.name }}
+          path: artifacts/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
 
-      # ---------- Push/Tag builds (use secrets + signed release) ----------
-      - name: Decode keystore
-        if: github.event_name != 'pull_request'
-        run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > release.jks
-          echo "ANDROID_KEYSTORE_PATH=${GITHUB_WORKSPACE}/release.jks" >> "$GITHUB_ENV"
+  signed_release:
+    name: Build signed APK and AAB
+    if: github.event_name != 'pull_request'
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      version_name: ${{ steps.release_artifacts.outputs.version_name }}
+      artifact_name: ${{ steps.release_artifacts.outputs.artifact_name }}
+    env:
+      TWITCH_CLIENT_ID: ${{ secrets.TWITCH_CLIENT_ID }}
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
-      - name: Build Release APK (signed)
-        if: github.event_name != 'pull_request'
-        env:
-          TWITCH_CLIENT_ID: ${{ secrets.TWITCH_CLIENT_ID }}
-          ANDROID_KEYSTORE_PATH: ${{ env.ANDROID_KEYSTORE_PATH }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: ./gradlew :app:assembleRelease --no-daemon
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Build Debug APK
-        if: github.event_name != 'pull_request'
-        env:
-          TWITCH_CLIENT_ID: ${{ secrets.TWITCH_CLIENT_ID }}
-        run: ./gradlew :app:assembleDebug --no-daemon
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
 
-      - name: Rename APKs with version (push/tag)
-        if: github.event_name != 'pull_request'
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+
+      - name: Validate release secrets and decode upload keystore
+        shell: bash
         run: |
           set -euo pipefail
-          SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-7)"
-
-          rename_variant () {
-            VARIANT="$1"
-            META="app/build/outputs/apk/${VARIANT}/output-metadata.json"
-
-            VERSION_NAME="$(jq -r '.elements[0].versionName' "$META")"
-            VERSION_CODE="$(jq -r '.elements[0].versionCode' "$META")"
-            OUTPUT_FILE="$(jq -r '.elements[0].outputFile' "$META")"
-
-            APK_IN="app/build/outputs/apk/${VARIANT}/${OUTPUT_FILE}"
-            APK_OUT="StreamerAudio-v${VERSION_NAME}(${VERSION_CODE})-${SHORT_SHA}-${VARIANT}.apk"
-
-            cp "$APK_IN" "$APK_OUT"
-            echo "Created: $APK_OUT"
-
-            if [ "$VARIANT" = "release" ]; then
-              echo "RELEASE_APK=$APK_OUT" >> "$GITHUB_ENV"
+          missing=()
+          for variable in \
+            TWITCH_CLIENT_ID \
+            ANDROID_KEYSTORE_BASE64 \
+            ANDROID_KEYSTORE_PASSWORD \
+            ANDROID_KEY_ALIAS \
+            ANDROID_KEY_PASSWORD
+          do
+            if [ -z "${!variable:-}" ]; then
+              missing+=("$variable")
             fi
-          }
+          done
 
-          rename_variant "release"
-          rename_variant "debug"
+          if [ "${#missing[@]}" -ne 0 ]; then
+            echo "Missing required GitHub Actions secrets: ${missing[*]}" >&2
+            exit 1
+          fi
 
-      - name: Upload Release APK artifact
-        if: github.event_name != 'pull_request'
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > release.jks
+          chmod 600 release.jks
+          echo "ANDROID_KEYSTORE_PATH=${GITHUB_WORKSPACE}/release.jks" >> "$GITHUB_ENV"
+
+      - name: Build signed release APK and Play Store AAB
+        run: ./gradlew :app:assembleRelease :app:bundleRelease --no-daemon
+
+      - name: Prepare release artifacts
+        id: release_artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          META="app/build/outputs/apk/release/output-metadata.json"
+          VERSION_NAME="$(jq -r '.elements[0].versionName' "$META")"
+          VERSION_CODE="$(jq -r '.elements[0].versionCode' "$META")"
+          APK_FILE="$(jq -r '.elements[0].outputFile' "$META")"
+          AAB_FILE="app/build/outputs/bundle/release/app-release.aab"
+          MAPPING_FILE="app/build/outputs/mapping/release/mapping.txt"
+          OUTPUT_DIR="artifacts/release"
+          BASE_NAME="StreamerAudio-v${VERSION_NAME}-${VERSION_CODE}-${SHORT_SHA}"
+
+          test -f "app/build/outputs/apk/release/${APK_FILE}"
+          test -f "$AAB_FILE"
+          test -f "$MAPPING_FILE"
+          mkdir -p "$OUTPUT_DIR"
+          cp "app/build/outputs/apk/release/${APK_FILE}" "${OUTPUT_DIR}/${BASE_NAME}-release.apk"
+          cp "$AAB_FILE" "${OUTPUT_DIR}/${BASE_NAME}-release.aab"
+          cp "$MAPPING_FILE" "${OUTPUT_DIR}/${BASE_NAME}-mapping.txt"
+
+          echo "version_name=${VERSION_NAME}" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=${BASE_NAME}-release" >> "$GITHUB_OUTPUT"
+
+      - name: Upload signed release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: StreamerAudio-release-apk
-          path: StreamerAudio-v*-release.apk
+          name: ${{ steps.release_artifacts.outputs.artifact_name }}
+          path: artifacts/release/*
+          if-no-files-found: error
+          retention-days: 90
 
-      - name: Upload Debug APK artifact
-        if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
+  publish:
+    name: Publish GitHub release
+    if: >-
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/tags/v'))
+    needs: signed_release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download signed release artifacts
+        uses: actions/download-artifact@v4
         with:
-          name: StreamerAudio-debug-apk
-          path: StreamerAudio-v*-debug.apk
+          name: ${{ needs.signed_release.outputs.artifact_name }}
+          path: artifacts/release
 
-      - name: Create GitHub Release and attach signed APK
+      - name: Publish develop pre-release
+        if: github.ref == 'refs/heads/develop'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: develop-${{ needs.signed_release.outputs.version_name }}.${{ github.run_number }}
+          name: Streamer Audio ${{ needs.signed_release.outputs.version_name }} develop build ${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          prerelease: true
+          generate_release_notes: true
+          files: |
+            artifacts/release/*.apk
+            artifacts/release/*.aab
+
+      - name: Publish production release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ env.RELEASE_APK }}
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            artifacts/release/*.apk
+            artifacts/release/*.aab

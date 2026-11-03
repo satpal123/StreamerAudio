@@ -10,37 +10,36 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.util.UUID
-import java.util.concurrent.TimeUnit
+import javax.inject.Inject
+import javax.inject.Singleton
 
 /**
  * Service for fetching Twitch stream access tokens via GraphQL
  * Required for direct HLS playback
  */
-object TwitchGqlService {
+@Singleton
+class TwitchGqlService @Inject constructor(
+    private val client: OkHttpClient
+) {
 
-    private const val TAG = "TwitchGqlService"
-
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
-        .build()
+    private val tag = "TwitchGqlService"
 
     @Volatile
     private var cachedIntegrityToken: String? = null
 
     // Twitch internal endpoint for integrity tokens
-    private const val INTEGRITY_URL = "https://gql.twitch.tv/integrity"
+    private val integrityUrl = "https://gql.twitch.tv/integrity"
 
     // Add browser-ish headers (helps with Twitch tightening checks)
-    private const val ORIGIN = "https://www.twitch.tv"
-    private const val REFERER = "https://www.twitch.tv/"
+    private val origin = "https://www.twitch.tv"
+    private val referer = "https://www.twitch.tv/"
 
     // Stable per app-process run (don’t use a constant)
     private val deviceId: String = UUID.randomUUID().toString().replace("-", "")
 
     // Full query to avoid persistedQuery hash changes breaking playback.
     // Only declare variables we actually use (GraphQL will error on unused variables).
-    private const val PLAYBACK_ACCESS_TOKEN_QUERY = """
+    private val playbackAccessTokenQuery = """
         query PlaybackAccessToken(${"$"}login: String!, ${"$"}playerType: String!) {
           streamPlaybackAccessToken(
             channelName: ${"$"}login,
@@ -57,8 +56,8 @@ object TwitchGqlService {
             .header("Client-Id", clientId)
             .header("X-Device-Id", deviceId)
             .header("User-Agent", Constants.USER_AGENT)
-            .header("Origin", ORIGIN)
-            .header("Referer", REFERER)
+            .header("Origin", origin)
+            .header("Referer", referer)
             .header("Accept", "application/json")
     }
 
@@ -69,30 +68,25 @@ object TwitchGqlService {
     private suspend fun fetchIntegrityToken(clientId: String): String? = withContext(Dispatchers.IO) {
         try {
             val request = Request.Builder()
-                .url(INTEGRITY_URL)
+                .url(integrityUrl)
                 .post("{}".toRequestBody("application/json".toMediaType()))
                 .addCommonHeaders(clientId)
                 .build()
 
-            val response = client.newCall(request).execute()
-            val body = response.body?.string().orEmpty()
-
-            if (!response.isSuccessful) {
-                Log.w(TAG, "Integrity token fetch failed: ${response.code} body=$body")
-                return@withContext null
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    Log.w(tag, "Integrity token fetch failed: ${response.code}")
+                    return@withContext null
+                }
+                val token = JSONObject(response.body.string()).optString("token").takeIf { it.isNotBlank() }
+                if (token != null) {
+                    cachedIntegrityToken = token
+                    return@withContext token
+                }
             }
-
-            val json = JSONObject(body)
-            val token = json.optString("token").takeIf { it.isNotBlank() }
-
-            if (token != null) {
-                cachedIntegrityToken = token
-                return@withContext token
-            }
-
-            Log.w(TAG, "Integrity token missing in response body=$body")
+            Log.w(tag, "Integrity token missing in response")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to fetch integrity token", e)
+            Log.e(tag, "Failed to fetch integrity token", e)
         }
         null
     }
@@ -127,7 +121,7 @@ object TwitchGqlService {
         return try {
             val payload = JSONObject().apply {
                 put("operationName", "PlaybackAccessToken")
-                put("query", PLAYBACK_ACCESS_TOKEN_QUERY.trimIndent())
+                put("query", playbackAccessTokenQuery.trimIndent())
                 put("variables", JSONObject().apply {
                     put("login", channelName.lowercase())
                     // "site" tends to behave more like normal web playback.
@@ -146,37 +140,27 @@ object TwitchGqlService {
                 requestBuilder.header("Client-Integrity", integrityToken)
             }
 
-            val response = client.newCall(requestBuilder.build()).execute()
-            val responseBody = response.body?.string().orEmpty()
-
-            if (!response.isSuccessful) {
-                Log.w(TAG, "Playback token request failed: ${response.code} body=$responseBody")
-                return null
-            }
-
-            val json = JSONObject(responseBody)
-
-            // If Twitch returns errors, log them and fail gracefully
-            json.optJSONArray("errors")?.let { errs ->
-                if (errs.length() > 0) {
-                    Log.w(TAG, "Playback token GraphQL errors: $errs")
+            client.newCall(requestBuilder.build()).execute().use { response ->
+                if (!response.isSuccessful) {
+                    Log.w(tag, "Playback token request failed: ${response.code}")
+                    return null
                 }
+                val json = JSONObject(response.body.string())
+                if ((json.optJSONArray("errors")?.length() ?: 0) > 0) {
+                    Log.w(tag, "Playback token GraphQL response contained errors")
+                }
+                val accessToken = json.optJSONObject("data")
+                    ?.optJSONObject("streamPlaybackAccessToken")
+                val token = accessToken?.optString("value")
+                val signature = accessToken?.optString("signature")
+                if (token.isNullOrBlank() || signature.isNullOrBlank()) {
+                    Log.w(tag, "Playback token missing or blank")
+                    return null
+                }
+                Pair(token, signature)
             }
-
-            val data = json.optJSONObject("data")
-            val streamPlaybackAccessToken = data?.optJSONObject("streamPlaybackAccessToken")
-
-            val token = streamPlaybackAccessToken?.optString("value")
-            val signature = streamPlaybackAccessToken?.optString("signature")
-
-            if (token.isNullOrBlank() || signature.isNullOrBlank()) {
-                Log.w(TAG, "Playback token missing/blank. body=$responseBody")
-                return null
-            }
-
-            Pair(token, signature)
         } catch (e: Exception) {
-            Log.e(TAG, "Playback token request exception", e)
+            Log.e(tag, "Playback token request exception", e)
             null
         }
     }
