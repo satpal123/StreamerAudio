@@ -15,9 +15,9 @@ class ExtM3UParser {
                     }
                 }
                 line.startsWith("#EXT-X-STREAM-INF") -> {
-                    currentEntry?.let {
-                        parseStreamInf(line, it)
-                    }
+                    val entry = currentEntry ?: ExtMediaEntry().also(entries::add)
+                    parseStreamInf(line, entry)
+                    currentEntry = entry
                 }
                 line.startsWith("http") || line.startsWith("https") -> {
                     currentEntry?.apply {
@@ -46,6 +46,10 @@ class ExtM3UParser {
 
     private fun parseStreamInf(line: String, entry: ExtMediaEntry) {
         val attributes = parseAttributes(line.substringAfter(':', ""))
+        entry.name = entry.name
+            ?: attributes["NAME"]
+            ?: attributes["IVS-NAME"]
+            ?: attributes["STABLE-VARIANT-ID"]
         entry.bandwidth = attributes["BANDWIDTH"]?.toLongOrNull()
         entry.resolution = attributes["RESOLUTION"]
         entry.codecs = attributes["CODECS"]

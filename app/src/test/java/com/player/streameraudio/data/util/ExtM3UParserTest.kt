@@ -200,6 +200,26 @@ class ExtM3UParserTest {
         }
     }
 
+    @Test
+    fun `parse standalone Twitch stream variants returned by proxy`() {
+        val input = """
+            #EXTM3U
+            #EXT-X-STREAM-INF:BANDWIDTH=8042999,RESOLUTION=1920x1080,CODECS="avc1.4D401F,mp4a.40.2",STABLE-VARIANT-ID="1080p60",IVS-NAME="1080p60"
+            https://example.com/video.m3u8
+            #EXT-X-STREAM-INF:BANDWIDTH=160000,CODECS="mp4a.40.2",STABLE-VARIANT-ID="audio_only",IVS-NAME="audio_only"
+            https://example.com/audio.m3u8
+        """.trimIndent()
+
+        val result = parser.parse(input)
+
+        assertEquals(2, result.size)
+        assertEquals("1080p60", result[0].name)
+        assertEquals("https://example.com/video.m3u8", result[0].playlistUrl)
+        assertEquals("audio_only", result[1].name)
+        assertEquals("mp4a.40.2", result[1].codecs)
+        assertEquals("https://example.com/audio.m3u8", result[1].playlistUrl)
+    }
+
     // ========== Multiple Entries Tests ==========
 
     @Test
@@ -270,7 +290,7 @@ class ExtM3UParserTest {
     }
 
     @Test
-    fun `parse input with only STREAM-INF without EXT-X-MEDIA`() {
+    fun `parse STREAM-INF without EXT-X-MEDIA as standalone variant`() {
         val input = """
             #EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080
             https://example.com/stream.m3u8
@@ -278,8 +298,10 @@ class ExtM3UParserTest {
 
         val result = parser.parse(input)
 
-        // Should not create entries without EXT-X-MEDIA
-        assertTrue(result.isEmpty())
+        assertEquals(1, result.size)
+        assertEquals(5000000L, result[0].bandwidth)
+        assertEquals("1920x1080", result[0].resolution)
+        assertEquals("https://example.com/stream.m3u8", result[0].playlistUrl)
     }
 
     @Test
