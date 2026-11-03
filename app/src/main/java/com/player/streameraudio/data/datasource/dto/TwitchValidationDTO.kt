@@ -6,7 +6,10 @@ data class TwitchValidationDTO(
     @SerializedName("client_id")
     val clientId: String,
 
+    @SerializedName("login")
     val login: String,
+
+    @SerializedName("scopes")
     val scopes: List<String>,
 
     @SerializedName("user_id")
