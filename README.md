@@ -1,10 +1,22 @@
 # Streamer Audio
 
 [![Android CI and Release](https://github.com/satpal123/StreamerAudio/actions/workflows/android-build.yml/badge.svg)](https://github.com/satpal123/StreamerAudio/actions/workflows/android-build.yml)
+[![Latest release](https://img.shields.io/github/v/release/satpal123/StreamerAudio)](https://github.com/satpal123/StreamerAudio/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Streamer Audio is an independent Android app for listening to live Twitch streams as audio. It supports guest browsing, optional Twitch sign-in for followed channels, user-managed HTTPS playback proxies, background playback, sleep timers, and Android Auto.
 
 Streamer Audio is not affiliated with, endorsed by, or sponsored by Twitch Interactive, Inc.
+
+## Install
+
+The latest stable version is **2.0.0** (version code 2).
+
+- [Download the signed Android APK](https://github.com/satpal123/StreamerAudio/releases/download/v2.0.0/StreamerAudio-v2.0.0-2-b6ddba1-release.apk) for direct installation and testing.
+- [Open the v2.0.0 release](https://github.com/satpal123/StreamerAudio/releases/tag/v2.0.0) to view release notes and download the Play Store AAB.
+- Read the [changelog](CHANGELOG.md) for the complete release summary.
+
+Android may ask you to allow installation from the browser or file manager used to open the APK. The AAB is intended for Google Play and cannot be installed directly on a phone.
 
 ## 2.0 highlights
 
@@ -14,6 +26,7 @@ Streamer Audio is not affiliated with, endorsed by, or sponsored by Twitch Inter
 - AndroidX Auth Tabs OAuth with a verified HTTPS App Link callback and random `state`
 - Android Keystore-backed token storage in no-backup storage
 - Media3 playback, persistent mini-player, retry, and 15/30/45/60 minute sleep timers
+- Search for live channels while signed in, automatic paging, responsive category browsing, and account/profile details
 - Android Auto media browsing with stable Following, Categories, Live, and Search roots
 - Deterministic `screenshot` build type for store captures
 
@@ -41,6 +54,8 @@ Build and test:
 ./gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleDebug
 ./gradlew :app:assembleScreenshot
 ```
+
+On Windows PowerShell, use `./gradlew.bat` in place of `./gradlew`.
 
 ## User-managed proxy contract
 
@@ -88,7 +103,7 @@ The [`Android CI and Release`](.github/workflows/android-build.yml) workflow use
 Develop pre-releases use tags such as `develop-2.0.0.42`. Production releases are created from explicit version tags:
 
 ```shell
-git tag v2.0.0
+git tag -a v2.0.0 -m "Streamer Audio 2.0.0"
 git push origin v2.0.0
 ```
 
@@ -115,6 +130,7 @@ Authentication tokens are AES-GCM encrypted with a non-exportable Android Keysto
 - Privacy: <https://streameraudio-twitch-backend.netlify.app/privacy>
 - Support: <https://streameraudio-twitch-backend.netlify.app/support>
 - OAuth callback: <https://streameraudio-twitch-backend.netlify.app/oauth/callback>
+- Releases: <https://github.com/satpal123/StreamerAudio/releases>
 
 Deployable static source and the Digital Asset Links files are under [`play/netlify`](play/netlify). Deploy that directory whenever a signing fingerprint changes, then verify `/.well-known/assetlinks.json` returns the release package and certificate without a redirect.
 
