@@ -18,6 +18,31 @@ The latest stable version is **2.0.0** (version code 2).
 
 Android may ask you to allow installation from the browser or file manager used to open the APK. The AAB is intended for Google Play and cannot be installed directly on a phone.
 
+## Screenshots
+
+Live channels, artwork, viewer totals, and theme colours vary over time and by account.
+
+<p align="center">
+  <img src="screenshots/01_login_screen.png" width="200" alt="Guest browsing and Twitch sign-in" />
+  <img src="screenshots/02_main_screen_logged_in.png" width="200" alt="Followed live channels" />
+  <img src="screenshots/03_categories_screen.png" width="200" alt="Twitch categories" />
+  <img src="screenshots/04_live_screen.png" width="200" alt="Popular live channels" />
+</p>
+
+<p align="center">
+  <img src="screenshots/05_player_screen.png" width="200" alt="Full audio player" />
+  <img src="screenshots/06_settings_screen.png" width="200" alt="Playback settings" />
+  <img src="screenshots/08_main_screen_not_logged_in.png" width="200" alt="Guest home screen" />
+  <img src="screenshots/09_live_screen_notlogged_in.png" width="200" alt="Guest live browsing" />
+</p>
+
+### Android Auto
+
+<p align="center">
+  <img src="screenshots/07_main_screen_aa.png" width="420" alt="Android Auto media library" />
+  <img src="screenshots/10_player_screen.png" width="420" alt="Android Auto player" />
+</p>
+
 ## 2.0 highlights
 
 - Single-activity Jetpack Compose and Material 3 UI with adaptive bottom navigation/navigation rail
