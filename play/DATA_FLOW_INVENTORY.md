@@ -8,7 +8,7 @@ This is an implementation inventory, not a submitted declaration. Re-check it ag
 | Streamer Audio Netlify backend | Category/channel/profile requests and normal request metadata such as IP/user agent | Guest browsing and public catalog lookup | Confirm Netlify/function log settings and retention before submission | Guest browsing causes these requests; stop using the app to stop future requests |
 | User-supplied proxy | Channel login, audio/source flags, IP and normal HTTPS request metadata | Optional alternate playback routing | Controlled entirely by the proxy operator | Disabled by default; user adds/selects/deletes endpoints |
 | Device Keystore + no-backup storage | Twitch access token, account ID and login | Maintain the signed-in session | Until logout, invalidation, corruption, or app-data deletion; excluded from backup | Logout or clear app data |
-| Typed DataStore | Proxy names/URLs, routing and fallback preferences, sleep-timer deadline, migration notice | User preferences | Until edited/deleted or app-data deletion; eligible for backup/transfer | Full in-app proxy CRUD; clear app data |
+| Typed DataStore | Proxy names/URLs, routing and fallback preferences, favorite channels, recently played channels, sleep-timer deadline, migration notice | User preferences and on-device library | Until edited/deleted or app-data deletion; eligible for backup/transfer | Favorite toggle, clear recent history, full in-app proxy CRUD, or clear app data |
 | Media3 notification / Android Auto | Current stream title, creator/category and artwork URL | Playback controls and media browsing | Ephemeral OS/media-session state | Stop playback |
 
 ## Permissions

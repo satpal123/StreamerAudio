@@ -12,6 +12,7 @@ import com.player.streameraudio.data.auth.LegacyAuthMigrator
 import com.player.streameraudio.data.auth.TokenStore
 import com.player.streameraudio.data.settings.PlaybackMode
 import com.player.streameraudio.data.settings.ProxyEndpoint
+import com.player.streameraudio.data.settings.SavedStream
 import com.player.streameraudio.data.settings.UserSettings
 import com.player.streameraudio.data.util.Constants
 import com.player.streameraudio.data.util.ResponseState
@@ -111,10 +112,11 @@ class MainViewModel @Inject constructor(
             }
             runCatching { playbackConnection.children(parentId) }
                 .onSuccess { items ->
+                    val uniqueItems = items.distinctBy { it.mediaId }
                     _uiState.update {
                         it.copy(
                             loading = false,
-                            items = items,
+                            items = uniqueItems,
                             canLoadMore = items.size >= PAGE_SIZE
                         )
                     }
@@ -172,7 +174,11 @@ class MainViewModel @Inject constructor(
                 )
             }
             runCatching { playbackConnection.search(normalized) }
-                .onSuccess { items -> _uiState.update { it.copy(loading = false, items = items) } }
+                .onSuccess { items ->
+                    _uiState.update {
+                        it.copy(loading = false, items = items.distinctBy { item -> item.mediaId })
+                    }
+                }
                 .onFailure { error ->
                     _uiState.update {
                         it.copy(loading = false, errorMessage = error.localizedMessage ?: "Search failed")
@@ -187,6 +193,27 @@ class MainViewModel @Inject constructor(
     }
 
     fun play(item: MediaItem) = playbackConnection.play(item)
+    fun toggleFavorite(item: MediaItem) {
+        val stream = item.toSavedStream()
+        viewModelScope.launch {
+            settingsRepository.toggleFavorite(stream)
+            if (_uiState.value.currentParentId == CustomMediaLibrarySessionCallback.FAVORITES) {
+                loadSection(CustomMediaLibrarySessionCallback.FAVORITES, "Favorites")
+            }
+        }
+    }
+
+    fun clearRecents() {
+        viewModelScope.launch {
+            settingsRepository.clearRecentStreams()
+            if (_uiState.value.currentParentId == CustomMediaLibrarySessionCallback.RECENTS) {
+                loadSection(CustomMediaLibrarySessionCallback.RECENTS, "Recently played")
+            }
+        }
+    }
+    fun setVolumeLeveling(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setVolumeLevelingEnabled(enabled) }
+    }
     fun togglePlayback() = playbackConnection.togglePlayback()
     fun retryPlayback() = playbackConnection.retry()
     fun setSleepTimer(minutes: Int?) {
@@ -335,6 +362,24 @@ class MainViewModel @Inject constructor(
                 .build()
             okHttpClient.newCall(request).execute().use { Unit }
         }
+    }
+
+    private fun MediaItem.toSavedStream(): SavedStream {
+        val extras = mediaMetadata.extras
+        val login = extras?.getString("userLogin")?.trim()?.lowercase()
+            ?.takeIf { it.isNotBlank() }
+            ?: mediaId.trim().lowercase()
+        return SavedStream(
+            mediaId = mediaId,
+            userLogin = login,
+            title = mediaMetadata.title?.toString().orEmpty().ifBlank { "Live" },
+            artist = extras?.getString("displayArtist")
+                ?.takeIf { it.isNotBlank() }
+                ?: mediaMetadata.artist?.toString().orEmpty().ifBlank { login },
+            artworkUrl = mediaMetadata.artworkUri?.toString()?.takeIf { it.isNotBlank() },
+            gameName = extras?.getString("gameName"),
+            savedAtEpochMs = System.currentTimeMillis()
+        )
     }
 
     private fun demoItems(parentId: String): List<MediaItem> = List(8) { index ->

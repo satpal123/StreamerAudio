@@ -4,7 +4,7 @@
 [![Latest release](https://img.shields.io/github/v/release/satpal123/StreamerAudio)](https://github.com/satpal123/StreamerAudio/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Streamer Audio is an independent Android app for listening to live Twitch streams as audio. It supports guest browsing, optional Twitch sign-in for followed channels, user-managed HTTPS playback proxies, background playback, sleep timers, and Android Auto.
+Streamer Audio is an independent Android app for listening to live Twitch streams as audio. It supports guest browsing, optional Twitch sign-in for followed channels, an on-device Favorites and Recently played library, user-managed HTTPS playback proxies, background playback, sleep timers, and Android Auto.
 
 Streamer Audio is not affiliated with, endorsed by, or sponsored by Twitch Interactive, Inc.
 
@@ -12,8 +12,8 @@ Streamer Audio is not affiliated with, endorsed by, or sponsored by Twitch Inter
 
 The latest stable version is **2.0.0** (version code 2).
 
-- [Download the signed Android APK](https://github.com/satpal123/StreamerAudio/releases/download/v2.0.0/StreamerAudio-v2.0.0-2-b6ddba1-release.apk) for direct installation and testing.
-- [Open the v2.0.0 release](https://github.com/satpal123/StreamerAudio/releases/tag/v2.0.0) to view release notes and download the Play Store AAB.
+- [Open the latest release](https://github.com/satpal123/StreamerAudio/releases/latest) to download the signed Android APK or Play Store AAB.
+- [Open the v2.1.0 release](https://github.com/satpal123/StreamerAudio/releases/tag/v2.1.0) to view its complete release notes.
 - Read the [changelog](CHANGELOG.md) for the complete release summary.
 
 Android may ask you to allow installation from the browser or file manager used to open the APK. The AAB is intended for Google Play and cannot be installed directly on a phone.
@@ -48,9 +48,11 @@ Live channels, artwork, viewer totals, and theme colours vary over time and by a
 - Optional HTTPS proxy endpoints created and managed by the user
 - AndroidX Auth Tabs OAuth with a verified HTTPS App Link callback and random `state`
 - Android Keystore-backed token storage in no-backup storage
-- Media3 playback, persistent mini-player, retry, and 15/30/45/60 minute sleep timers
+- Media3 playback, optional volume leveling, persistent mini-player, retry, and 15/30/45/60 minute sleep timers
 - Search for live channels while signed in, automatic paging, responsive category browsing, and account/profile details
-- Android Auto media browsing with stable Following, Categories, Live, and Search roots
+- Device-local Favorites and Recently played for guests and signed-in users
+- Authenticated-first direct playback with safe anonymous fallback when Twitch does not accept account playback
+- Android Auto media browsing with stable Favorites, Recently played, Following, Categories, Live, and Search roots
 - Deterministic `screenshot` build type for store captures
 
 ## Requirements

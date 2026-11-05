@@ -16,15 +16,16 @@ Listen to live streams as audio, with guest browsing and Android Auto.
 
 Streamer Audio is a lightweight way to discover and listen to live Twitch streams using audio playback.
 
-Browse popular live channels and categories without an account, or sign in with Twitch to find channels you follow. Continue listening in the background, control playback from the persistent mini-player, and set a sleep timer for 15, 30, 45, or 60 minutes.
+Browse popular live channels and categories without an account, or sign in with Twitch to find channels you follow. Save favorite channels and return to recently played streams in either mode. Continue listening in the background, control playback from the persistent mini-player, and set a sleep timer for 15, 30, 45, or 60 minutes.
 
 Features:
 
 - Guest browsing for live streams and categories
 - Optional Twitch sign-in for followed live channels
+- Device-local Favorites and Recently played
 - Audio-focused direct playback
 - User-managed HTTPS proxy endpoints when an alternate route is needed
-- Retry, play/pause, stream details, artwork, and sleep timers
+- Optional volume leveling, retry, play/pause, stream details, artwork, and sleep timers
 - Light and dark Material 3 themes with adaptive phone and tablet layouts
 - Android Auto browsing and playback controls
 

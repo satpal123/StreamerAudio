@@ -28,11 +28,13 @@ bundletool install-apks --apks app-release.apks
 - [ ] Verify no debug signing certificate is used
 - [ ] Verify auth callback with the build installed from Play internal testing
 - [ ] Verify Direct, Proxy, fallback, selected-proxy deletion, retry, and timer expiry
+- [ ] Verify volume leveling while playing, after switching streams, in the background, and through Android Auto
+- [ ] Verify Favorites and Recently played as a guest, after sign-in, after logout, and after app restart
 - [ ] Verify offline, empty, server-error, and expired-token states
 
 ## Android Auto
 
-- [ ] Test root, Following, Categories, Live, Search, paging, playback and background recovery in Desktop Head Unit
+- [ ] Test root, Favorites, Recently played, Following, Categories, Live, Search, paging, playback and background recovery in Desktop Head Unit
 - [ ] Confirm stable media IDs remain compatible with saved car state
 - [ ] Opt into Android Auto in Play Console form factors
 - [ ] Complete the media-app review and supply Android Auto screenshots

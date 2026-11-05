@@ -2,6 +2,17 @@
 
 All notable user-facing changes to Streamer Audio are documented here.
 
+## [2.1.0](https://github.com/satpal123/StreamerAudio/releases/tag/v2.1.0) - 2026-11-05
+
+Streamer Audio 2.1 adds a device-local listening library, improves authenticated playback, expands Android Auto browsing, and introduces optional volume leveling.
+
+- Added an on-device Library with Favorites and Recently played for guest and signed-in users, including Android Auto access.
+- Added favorite controls to stream cards and the full player, plus clearable local listening history.
+- Added authenticated-first direct playback so Twitch can apply account entitlements when supported, with automatic anonymous fallback.
+- Ensured Twitch OAuth tokens are sent only to Twitch and never to user-configured proxy endpoints.
+- Fixed a scrolling crash when a Twitch or backend page returned the same channel more than once.
+- Added optional device-side volume leveling for quieter streams and loud peaks, including background and Android Auto playback.
+
 ## [2.0.0](https://github.com/satpal123/StreamerAudio/releases/tag/v2.0.0) - 2026-11-05
 
 Streamer Audio 2.0 is a ground-up modernization focused on phone usability, reliable background audio, Android Auto, user-controlled routing, secure Twitch authentication, and production release readiness.

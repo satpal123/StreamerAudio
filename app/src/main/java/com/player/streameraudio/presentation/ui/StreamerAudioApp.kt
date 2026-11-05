@@ -30,11 +30,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
@@ -49,7 +50,10 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -135,7 +139,8 @@ private data class Destination(val route: String, val label: String, val icon: a
 private val destinations = listOf(
     Destination("following", "Following", Icons.Default.Favorite),
     Destination("browse", "Browse", Icons.Default.Category),
-    Destination("live", "Live", Icons.Default.LiveTv)
+    Destination("live", "Live", Icons.Default.LiveTv),
+    Destination("library", "Library", Icons.Default.LibraryMusic)
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -149,6 +154,7 @@ fun StreamerAudioApp(viewModel: MainViewModel, onLogin: () -> Unit) {
     val showMainNavigation = route == "category" || route == "search" || route in destinations.map { it.route }
     val wide = LocalConfiguration.current.screenWidthDp >= 600
     val snackbar = remember { SnackbarHostState() }
+    val favoriteKeys = state.settings.favoriteStreams.map { it.stableKey }.toSet()
     val playAndOpen: (MediaItem) -> Unit = { item ->
         viewModel.play(item)
         navController.navigate("player") { launchSingleTop = true }
@@ -161,6 +167,11 @@ fun StreamerAudioApp(viewModel: MainViewModel, onLogin: () -> Unit) {
         when (route) {
             "browse" -> viewModel.loadSection(CustomMediaLibrarySessionCallback.TOP_GAMES, "Browse")
             "live" -> viewModel.loadSection(CustomMediaLibrarySessionCallback.TOP_STREAMS, "Live")
+            "library" -> if (state.currentParentId == CustomMediaLibrarySessionCallback.RECENTS) {
+                viewModel.loadSection(CustomMediaLibrarySessionCallback.RECENTS, "Recently played")
+            } else {
+                viewModel.loadSection(CustomMediaLibrarySessionCallback.FAVORITES, "Favorites")
+            }
             "following" -> if (state.authenticated) {
                 viewModel.loadSection(CustomMediaLibrarySessionCallback.FOLLOWED, "Following")
             }
@@ -212,6 +223,7 @@ fun StreamerAudioApp(viewModel: MainViewModel, onLogin: () -> Unit) {
                                     "following" -> "Following"
                                     "browse" -> "Browse"
                                     "live" -> "Live"
+                                    "library" -> "Library"
                                     "search" -> "Search"
                                     "profile" -> "Profile"
                                     "settings" -> "Settings"
@@ -317,7 +329,7 @@ fun StreamerAudioApp(viewModel: MainViewModel, onLogin: () -> Unit) {
                 }
             ) {
                 composable("following") {
-                    if (state.authenticated) ContentScreen(state, onRetry = { viewModel.loadSection(CustomMediaLibrarySessionCallback.FOLLOWED, "Following") }, onLoadMore = viewModel::loadNextPage, onItem = playAndOpen)
+                    if (state.authenticated) ContentScreen(state, onRetry = { viewModel.loadSection(CustomMediaLibrarySessionCallback.FOLLOWED, "Following") }, onLoadMore = viewModel::loadNextPage, favoriteKeys = favoriteKeys, onToggleFavorite = viewModel::toggleFavorite, onItem = playAndOpen)
                     else LoginPrompt(onLogin)
                 }
                 composable("browse") {
@@ -327,12 +339,15 @@ fun StreamerAudioApp(viewModel: MainViewModel, onLogin: () -> Unit) {
                     }
                 }
                 composable("live") {
-                    ContentScreen(state, onRetry = { viewModel.loadSection(CustomMediaLibrarySessionCallback.TOP_STREAMS, "Live") }, onLoadMore = viewModel::loadNextPage, onItem = playAndOpen)
+                    ContentScreen(state, onRetry = { viewModel.loadSection(CustomMediaLibrarySessionCallback.TOP_STREAMS, "Live") }, onLoadMore = viewModel::loadNextPage, favoriteKeys = favoriteKeys, onToggleFavorite = viewModel::toggleFavorite, onItem = playAndOpen)
                 }
-                composable("category") { ContentScreen(state, onRetry = viewModel::reloadCurrentSection, onLoadMore = viewModel::loadNextPage, onItem = playAndOpen) }
+                composable("category") { ContentScreen(state, onRetry = viewModel::reloadCurrentSection, onLoadMore = viewModel::loadNextPage, favoriteKeys = favoriteKeys, onToggleFavorite = viewModel::toggleFavorite, onItem = playAndOpen) }
                 composable("search") {
-                    if (state.authenticated) SearchScreen(state, viewModel, playAndOpen)
+                    if (state.authenticated) SearchScreen(state, viewModel, favoriteKeys, playAndOpen)
                     else LoginPrompt(onLogin)
+                }
+                composable("library") {
+                    LibraryScreen(state, viewModel, favoriteKeys, playAndOpen)
                 }
                 composable("player") { PlayerScreen(state, viewModel) }
                 composable("profile") {
@@ -484,7 +499,12 @@ private fun AppNavigationRail(route: String, nav: NavHostController) {
 }
 
 @Composable
-private fun SearchScreen(state: MainUiState, viewModel: MainViewModel, onItem: (MediaItem) -> Unit) {
+private fun SearchScreen(
+    state: MainUiState,
+    viewModel: MainViewModel,
+    favoriteKeys: Set<String>,
+    onItem: (MediaItem) -> Unit
+) {
     var query by rememberSaveable { mutableStateOf(state.searchQuery.orEmpty()) }
     var hasSearched by rememberSaveable { mutableStateOf(state.searchQuery != null) }
     val focusManager = LocalFocusManager.current
@@ -542,9 +562,64 @@ private fun SearchScreen(state: MainUiState, viewModel: MainViewModel, onItem: (
                     state = state,
                     onRetry = submitSearch,
                     onLoadMore = {},
+                    favoriteKeys = favoriteKeys,
+                    onToggleFavorite = viewModel::toggleFavorite,
                     onItem = onItem
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun LibraryScreen(
+    state: MainUiState,
+    viewModel: MainViewModel,
+    favoriteKeys: Set<String>,
+    onItem: (MediaItem) -> Unit
+) {
+    val showingFavorites = state.currentParentId != CustomMediaLibrarySessionCallback.RECENTS
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            FilterChip(
+                selected = showingFavorites,
+                onClick = {
+                    viewModel.loadSection(CustomMediaLibrarySessionCallback.FAVORITES, "Favorites")
+                },
+                label = { Text("Favorites") },
+                leadingIcon = { Icon(Icons.Default.Favorite, null, Modifier.size(18.dp)) }
+            )
+            FilterChip(
+                selected = !showingFavorites,
+                onClick = {
+                    viewModel.loadSection(CustomMediaLibrarySessionCallback.RECENTS, "Recently played")
+                },
+                label = { Text("Recent") },
+                leadingIcon = { Icon(Icons.Default.History, null, Modifier.size(18.dp)) }
+            )
+            Spacer(Modifier.weight(1f))
+            if (!showingFavorites && state.settings.recentStreams.isNotEmpty()) {
+                TextButton(onClick = viewModel::clearRecents) { Text("Clear") }
+            }
+        }
+        Box(Modifier.weight(1f)) {
+            ContentScreen(
+                state = state,
+                onRetry = viewModel::reloadCurrentSection,
+                onLoadMore = viewModel::loadNextPage,
+                favoriteKeys = favoriteKeys,
+                onToggleFavorite = viewModel::toggleFavorite,
+                emptyMessage = if (showingFavorites) {
+                    "Save channels with the heart button to find them here."
+                } else {
+                    "Channels you play will appear here."
+                },
+                onItem = onItem
+            )
         }
     }
 }
@@ -653,6 +728,9 @@ private fun ContentScreen(
     grid: Boolean = false,
     onRetry: () -> Unit,
     onLoadMore: () -> Unit,
+    favoriteKeys: Set<String> = emptySet(),
+    onToggleFavorite: ((MediaItem) -> Unit)? = null,
+    emptyMessage: String? = null,
     onItem: (MediaItem) -> Unit
 ) {
     val widthDp = LocalConfiguration.current.screenWidthDp
@@ -666,12 +744,12 @@ private fun ContentScreen(
         state.errorMessage != null -> ErrorState(state.errorMessage, onRetry)
         state.items.isEmpty() -> Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
             Text(
-                if (state.title == "Search") "No live channels matched your search." else "Nothing live here right now.",
+                emptyMessage ?: if (state.title == "Search") "No live channels matched your search." else "Nothing live here right now.",
                 style = MaterialTheme.typography.titleMedium
             )
         }
         grid -> CategoryGrid(state, categoryColumns, onLoadMore, onItem)
-        else -> StreamList(state, onLoadMore, onItem)
+        else -> StreamList(state, onLoadMore, favoriteKeys, onToggleFavorite, onItem)
     }
 }
 
@@ -703,7 +781,12 @@ private fun CategoryGrid(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        items(state.items, key = { it.mediaId }) { CategoryCard(it) { onItem(it) } }
+        itemsIndexed(
+            items = state.items,
+            key = { index, item -> "${item.mediaId}:$index" }
+        ) { _, item ->
+            CategoryCard(item) { onItem(item) }
+        }
         if (state.loadingMore) {
             item(span = { GridItemSpan(maxLineSpan) }) { LoadingNextPage() }
         }
@@ -711,7 +794,13 @@ private fun CategoryGrid(
 }
 
 @Composable
-private fun StreamList(state: MainUiState, onLoadMore: () -> Unit, onItem: (MediaItem) -> Unit) {
+private fun StreamList(
+    state: MainUiState,
+    onLoadMore: () -> Unit,
+    favoriteKeys: Set<String>,
+    onToggleFavorite: ((MediaItem) -> Unit)?,
+    onItem: (MediaItem) -> Unit
+) {
     val listState = rememberLazyListState()
     LaunchedEffect(listState, state.items.size, state.canLoadMore, state.loadingMore) {
         snapshotFlow {
@@ -731,7 +820,17 @@ private fun StreamList(state: MainUiState, onLoadMore: () -> Unit, onItem: (Medi
         ),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        items(state.items, key = { it.mediaId }) { StreamCard(it) { onItem(it) } }
+        itemsIndexed(
+            items = state.items,
+            key = { index, item -> "${item.mediaId}:$index" }
+        ) { _, item ->
+            StreamCard(
+                item = item,
+                isFavorite = item.stableStreamKey() in favoriteKeys,
+                onToggleFavorite = onToggleFavorite?.let { toggle -> { toggle(item) } },
+                onClick = { onItem(item) }
+            )
+        }
         if (state.loadingMore) item { LoadingNextPage() }
     }
 }
@@ -798,7 +897,12 @@ private fun CategoryCard(item: MediaItem, onClick: () -> Unit) {
 }
 
 @Composable
-private fun StreamCard(item: MediaItem, onClick: () -> Unit) {
+private fun StreamCard(
+    item: MediaItem,
+    isFavorite: Boolean,
+    onToggleFavorite: (() -> Unit)?,
+    onClick: () -> Unit
+) {
     val extras = item.mediaMetadata.extras
     val viewers = extras?.getString("viewerCount")
     val game = extras?.getString("gameName")
@@ -842,10 +946,28 @@ private fun StreamCard(item: MediaItem, onClick: () -> Unit) {
                     if (!game.isNullOrBlank()) Text(game, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
-            FilledTonalIconButton(onClick = onClick) { Icon(Icons.Default.PlayArrow, "Play") }
+            if (onToggleFavorite != null) {
+                IconButton(onClick = onToggleFavorite, modifier = Modifier.size(44.dp)) {
+                    Icon(
+                        if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        if (isFavorite) "Remove from Favorites" else "Add to Favorites",
+                        tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            FilledTonalIconButton(onClick = onClick, modifier = Modifier.size(44.dp)) {
+                Icon(Icons.Default.PlayArrow, "Play")
+            }
         }
     }
 }
+
+private fun MediaItem.stableStreamKey(): String =
+    mediaMetadata.extras?.getString("userLogin")
+        ?.trim()
+        ?.lowercase()
+        ?.takeIf { it.isNotBlank() }
+        ?: mediaId.trim().lowercase()
 
 private fun formatViewerCount(raw: String): String {
     val value = raw.toLongOrNull() ?: return raw
@@ -908,10 +1030,27 @@ private fun PlayerScreen(state: MainUiState, viewModel: MainViewModel) {
         return
     }
     val sleepRemaining = rememberSleepTimerRemaining(state.settings.sleepTimerDeadlineEpochMs)
+    val isFavorite = item.stableStreamKey() in state.settings.favoriteStreams.map { it.stableKey }.toSet()
     Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Spacer(Modifier.height(8.dp))
         AsyncImage(item.mediaMetadata.artworkUri, null, Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(24.dp)), contentScale = ContentScale.Crop)
-        Text(item.mediaMetadata.artist?.toString().orEmpty(), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                item.mediaMetadata.artist?.toString().orEmpty(),
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            IconButton(onClick = { viewModel.toggleFavorite(item) }) {
+                Icon(
+                    if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    if (isFavorite) "Remove from Favorites" else "Add to Favorites",
+                    tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
         Text(item.mediaMetadata.title?.toString().orEmpty(), maxLines = 2, overflow = TextOverflow.Ellipsis)
         state.playback.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error); OutlinedButton(onClick = viewModel::retryPlayback) { Text("Reconnect") } }
         FilledIconButton(onClick = viewModel::togglePlayback, modifier = Modifier.size(72.dp)) {
@@ -976,6 +1115,21 @@ private fun SettingsScreen(state: MainUiState, viewModel: MainViewModel, onLogin
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(state.settings.routing.mode == PlaybackMode.DIRECT, { viewModel.setMode(PlaybackMode.DIRECT) }, { Text("Direct") })
                         FilterChip(state.settings.routing.mode == PlaybackMode.PROXY, { viewModel.setMode(PlaybackMode.PROXY) }, { Text("Custom proxy") })
+                    }
+                    HorizontalDivider()
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Volume leveling", fontWeight = FontWeight.Medium)
+                            Text(
+                                "Boost quieter streams and gently compress loud peaks",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = state.settings.volumeLevelingEnabled,
+                            onCheckedChange = viewModel::setVolumeLeveling
+                        )
                     }
                     HorizontalDivider()
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

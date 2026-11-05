@@ -30,12 +30,29 @@ data class LastPlayedStream(
 )
 
 @Serializable
+data class SavedStream(
+    val mediaId: String,
+    val userLogin: String,
+    val title: String,
+    val artist: String,
+    val artworkUrl: String? = null,
+    val gameName: String? = null,
+    val savedAtEpochMs: Long = 0L
+) {
+    val stableKey: String
+        get() = userLogin.trim().lowercase().ifBlank { mediaId.trim().lowercase() }
+}
+
+@Serializable
 data class UserSettings(
     val proxies: List<ProxyEndpoint> = emptyList(),
     val routing: PlaybackRouting = PlaybackRouting(),
     val legacyProxyNoticePending: Boolean = false,
     val sleepTimerDeadlineEpochMs: Long? = null,
-    val lastPlayedStream: LastPlayedStream? = null
+    val lastPlayedStream: LastPlayedStream? = null,
+    val favoriteStreams: List<SavedStream> = emptyList(),
+    val recentStreams: List<SavedStream> = emptyList(),
+    val volumeLevelingEnabled: Boolean = false
 )
 
 sealed interface ProxyValidationResult {

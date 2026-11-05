@@ -24,6 +24,7 @@ import com.google.common.util.concurrent.SettableFuture
 import com.player.streameraudio.data.auth.TokenStore
 import com.player.streameraudio.data.playback.StreamResolver
 import com.player.streameraudio.data.settings.LastPlayedStream
+import com.player.streameraudio.data.settings.SavedStream
 import com.player.streameraudio.data.util.Constants
 import com.player.streameraudio.data.util.ResponseState
 import com.player.streameraudio.domain.repository.PlaybackSettingsRepository
@@ -73,7 +74,6 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
     private val streamResolver: StreamResolver
 ) : MediaLibrarySession.Callback {
 
-    private var streamUrl: String? = null
     private val coroutineScope = CoroutineScope(Dispatchers.Main + Job())
     private var sleepTimerJob: Job? = null
 
@@ -108,7 +108,6 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
         playableCache.clear()
         avatarCache.clear()
         cursorCache.clear()
-        streamUrl = null
     }
 
     @OptIn(UnstableApi::class)
@@ -239,6 +238,8 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
         const val ROOT = "root"
 
         const val FOLLOWED = "FOLLOWED"
+        const val FAVORITES = "FAVORITES"
+        const val RECENTS = "RECENTS"
         const val TOP_GAMES = "TOP_GAMES"
         const val TOP_STREAMS = "TOP_STREAMS"
         const val SEARCH = "search"
@@ -381,7 +382,7 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
             val loggedinUserId = authSession?.userId
             val bearer = accessToken?.takeIf { it.isNotBlank() }?.let { "Bearer $it" }
 
-            AndroidLog.d("MediaSession", "onGetChildren auth check: token=${accessToken?.take(10)}, userId=$loggedinUserId, bearer=${bearer != null}")
+            AndroidLog.d("MediaSession", "onGetChildren auth check: userIdPresent=${!loggedinUserId.isNullOrBlank()}, authenticated=${bearer != null}")
 
             val effectivePageSize = normalizePageSize(pageSize)
             val hardCap = minOf(effectivePageSize, HARD_MAX_ITEMS).coerceAtLeast(1)
@@ -389,6 +390,8 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
             // Root menu
             if (parentId == ROOT || parentId == ROOT_AUTH || parentId == ROOT_GUEST) {
                 val nodes = mutableListOf<MediaItem>()
+                nodes.add(createBrowsableItem(FAVORITES, "Favorites", "Saved channels"))
+                nodes.add(createBrowsableItem(RECENTS, "Recently played", "Your listening history"))
                 if (bearer != null && !loggedinUserId.isNullOrBlank()) {
                     nodes.add(createBrowsableItem(FOLLOWED, "Following", "Live channels you follow"))
                 }
@@ -397,6 +400,18 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
                 if (bearer != null) nodes.add(createBrowsableItem(SEARCH, "Search", "Search live channels"))
 
                 future.set(LibraryResult.ofItemList(nodes.toImmutable(), params))
+                return@future
+            }
+
+            if (parentId == FAVORITES || parentId == RECENTS) {
+                val saved = if (parentId == FAVORITES) {
+                    playbackSettingsRepository.settings.value.favoriteStreams
+                } else {
+                    playbackSettingsRepository.settings.value.recentStreams
+                }
+                val fromIndex = (page.coerceAtLeast(0) * hardCap).coerceAtMost(saved.size)
+                val items = saved.drop(fromIndex).take(hardCap).map(::createSavedStreamItem)
+                future.set(LibraryResult.ofItemList(items.toImmutable(), params))
                 return@future
             }
 
@@ -431,7 +446,11 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
                     break
                 }
 
-                allItems.addAll(items)
+                    items.forEach { item ->
+                        if (allItems.none { existing -> existing.mediaId == item.mediaId }) {
+                            allItems.add(item)
+                        }
+                    }
                 finalCursor = nextCursor
 
                 if (nextCursor.isNullOrBlank()) {
@@ -542,6 +561,7 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
                     val startedAtMs =
                         extras?.getLong(EXTRA_STARTED_AT_MS)?.takeIf { it > 0 }
                             ?: cached?.startedAtMs
+                    val gameName = extras?.getString("gameName")
 
                     // Playback artwork is the channel avatar only. Stream thumbnails are list artwork.
                     val avatar = getAvatarUriUnauth(streamerLogin)
@@ -549,19 +569,17 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
 
                     val finalUrl = streamResolver.resolve(streamerLogin)
 
-                    streamUrl = finalUrl
-
-                    if (streamUrl != null) {
+                    if (finalUrl != null) {
                         val mediaItem = createLiveMediaItem(
                             mediaId = mediaId,
                             title = title,
                             artist = artist,
                             artwork = artwork,
-                            streamUrl = Uri.parse(streamUrl),
+                            streamUrl = Uri.parse(finalUrl),
                             startedAtMs = startedAtMs,
                             userLogin = streamerLogin
                         )
-                        rememberLastPlayed(mediaId, title, artist, artwork, streamerLogin, startedAtMs)
+                        rememberLastPlayed(mediaId, title, artist, artwork, streamerLogin, startedAtMs, gameName)
                         childItems.add(mediaItem)
                         if (!future.isDone) {
                             future.set(MediaSession.MediaItemsWithStartPosition(childItems, 0, 0L))
@@ -573,57 +591,53 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
                 }
 
                 // Authenticated playback
-                twitchUserUseCase(mediaId, null, bearer, Constants.TWITCH_CLIENT_ID).collect { userResult ->
-                    if (userResult is ResponseState.Success) {
-                        val user = userResult.data?.firstOrNull() ?: return@collect
-                        val artworkUriStr = user.profileImageUrl
-                        val loginName = user.login.trim().lowercase()
-
-                        val finalUrl = streamResolver.resolve(loginName)
-
-                        streamUrl = finalUrl
-
-                        if (streamUrl != null) {
-                            twitchStreamsDetailsUseCase(mediaId, bearer, Constants.TWITCH_CLIENT_ID).collect { detailsResult ->
-                                if (detailsResult is ResponseState.Success) {
-                                    val details = detailsResult.data?.firstOrNull()
-                                    val userName = details?.userName.orEmpty()
-                                    val startedAtMs = parseTwitchIsoToMs(details?.startedAt)
-
-                                    val artworkUri = try {
-                                        Uri.parse(artworkUriStr)
-                                    } catch (_: Exception) {
-                                        Uri.EMPTY
-                                    }
-
-                                    val mediaItem = createLiveMediaItem(
-                                        mediaId = mediaId,
-                                        title = details?.title.orEmpty(),
-                                        artist = userName,
-                                        artwork = artworkUri,
-                                        streamUrl = Uri.parse(streamUrl),
-                                        startedAtMs = startedAtMs,
-                                        userLogin = loginName
-                                    )
-                                    rememberLastPlayed(
-                                        mediaId,
-                                        details?.title.orEmpty(),
-                                        userName,
-                                        artworkUri,
-                                        loginName,
-                                        startedAtMs
-                                    )
-                                    childItems.add(mediaItem)
-
-                                    if (!future.isDone) {
-                                        future.set(MediaSession.MediaItemsWithStartPosition(childItems, 0, 0L))
-                                    }
-                                }
-                            }
-                        } else {
-                            if (!future.isDone) future.setException(Exception("Failed to fetch stream URL"))
-                        }
-                    }
+                val requestedLogin = mediaItems.firstOrNull()?.mediaMetadata?.extras
+                    ?.getString("userLogin")
+                    ?.takeIf { it.isNotBlank() }
+                val userResult = awaitNonLoading(twitchUserUseCase(
+                    if (requestedLogin == null) mediaId else null,
+                    requestedLogin,
+                    bearer,
+                    Constants.TWITCH_CLIENT_ID
+                ))
+                val user = (userResult as? ResponseState.Success)?.data?.firstOrNull()
+                    ?: throw IllegalStateException("Unable to load channel details")
+                val loginName = user.login.trim().lowercase()
+                val finalUrl = streamResolver.resolve(loginName)
+                    ?: throw IllegalStateException("Failed to fetch stream URL")
+                val detailsResult = awaitNonLoading(
+                    twitchStreamsDetailsUseCase(user.id, bearer, Constants.TWITCH_CLIENT_ID)
+                )
+                val details = (detailsResult as? ResponseState.Success)?.data?.firstOrNull()
+                val incomingMetadata = mediaItems.firstOrNull()?.mediaMetadata
+                val title = details?.title?.takeIf { it.isNotBlank() }
+                    ?: incomingMetadata?.title?.toString().orEmpty().ifBlank { "Live" }
+                val userName = details?.userName?.takeIf { it.isNotBlank() }
+                    ?: user.displayName.ifBlank { loginName }
+                val startedAtMs = parseTwitchIsoToMs(details?.startedAt)
+                    ?: incomingMetadata?.extras?.getLong(EXTRA_STARTED_AT_MS)?.takeIf { it > 0 }
+                val artworkUri = runCatching { Uri.parse(user.profileImageUrl) }.getOrDefault(Uri.EMPTY)
+                val mediaItem = createLiveMediaItem(
+                    mediaId = mediaId,
+                    title = title,
+                    artist = userName,
+                    artwork = artworkUri,
+                    streamUrl = Uri.parse(finalUrl),
+                    startedAtMs = startedAtMs,
+                    userLogin = loginName
+                )
+                rememberLastPlayed(
+                    mediaId,
+                    title,
+                    userName,
+                    artworkUri,
+                    loginName,
+                    startedAtMs,
+                    details?.gameName ?: incomingMetadata?.extras?.getString("gameName")
+                )
+                childItems.add(mediaItem)
+                if (!future.isDone) {
+                    future.set(MediaSession.MediaItemsWithStartPosition(childItems, 0, 0L))
                 }
             } catch (e: Exception) {
                 if (!future.isDone) future.setException(e)
@@ -662,7 +676,8 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
                             artist = d.userName,
                             artwork = Uri.parse(d.thumbnailUrl.replace("{width}", "440").replace("{height}", "248")),
                             viewerCount = d.viewerCount.toString(),
-                            gameName = d.gameName
+                            gameName = d.gameName,
+                            userLogin = d.userLogin
                         )
                     }
                     Pair(items, nextCursor)
@@ -714,7 +729,8 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
                                 artist = stream.userName,
                                 artwork = Uri.parse(stream.thumbnailUrl.replace("{width}", "440").replace("{height}", "248")),
                                 viewerCount = stream.viewerCount.toString(),
-                                gameName = stream.gameName
+                                gameName = stream.gameName,
+                                userLogin = stream.userLogin
                             )
                         }
                         Pair(items, nextCursor)
@@ -793,7 +809,8 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
                                 artist = channel.userName,
                                 artwork = Uri.parse(channel.thumbnailUrl.replace("{width}", "440").replace("{height}", "248")),
                                 viewerCount = channel.viewerCount.toString(),
-                                gameName = channel.gameName
+                                gameName = channel.gameName,
+                                userLogin = channel.userLogin
                             )
                         }
                         Pair(items, nextCursor)
@@ -821,7 +838,8 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
                             mediaId = c.id,
                             title = c.title.orEmpty().ifBlank { "Live" },
                             artist = c.displayName,
-                            artwork = art
+                            artwork = art,
+                            userLogin = c.broadcasterLogin
                         )
                     }
                     Pair(items, nextCursor)
@@ -924,6 +942,16 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
             .build()
     }
 
+    private fun createSavedStreamItem(stream: SavedStream): MediaItem =
+        createPlayableStreamItem(
+            mediaId = stream.mediaId,
+            title = stream.title,
+            artist = stream.artist,
+            artwork = stream.artworkUrl?.let { runCatching { Uri.parse(it) }.getOrNull() },
+            gameName = stream.gameName,
+            userLogin = stream.userLogin
+        )
+
     private fun createLiveMediaItem(
         mediaId: String,
         title: String,
@@ -938,6 +966,7 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
         val extras = Bundle().apply {
             if (startedAtMs != null) putLong(EXTRA_STARTED_AT_MS, startedAtMs)
             putString("userLogin", userLogin)
+            putString("displayArtist", artist)
         }
 
         return MediaItem.Builder()
@@ -968,7 +997,8 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
         artist: String,
         artwork: Uri,
         userLogin: String,
-        startedAtMs: Long?
+        startedAtMs: Long?,
+        gameName: String? = null
     ) {
         runCatching {
             playbackSettingsRepository.setLastPlayedStream(
@@ -979,6 +1009,17 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
                     artworkUrl = artwork.toString().takeIf { it.isNotBlank() },
                     userLogin = userLogin,
                     startedAtEpochMs = startedAtMs
+                )
+            )
+            playbackSettingsRepository.addRecentStream(
+                SavedStream(
+                    mediaId = mediaId,
+                    userLogin = userLogin,
+                    title = title.ifBlank { "Live" },
+                    artist = artist.ifBlank { userLogin },
+                    artworkUrl = artwork.toString().takeIf { it.isNotBlank() },
+                    gameName = gameName,
+                    savedAtEpochMs = System.currentTimeMillis()
                 )
             )
         }.onFailure {

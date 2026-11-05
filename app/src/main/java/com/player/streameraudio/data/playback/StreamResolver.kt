@@ -2,6 +2,7 @@ package com.player.streameraudio.data.playback
 
 import android.util.Log
 import com.player.streameraudio.data.api.TwitchGqlService
+import com.player.streameraudio.data.auth.TokenStore
 import com.player.streameraudio.data.settings.PlaybackMode
 import com.player.streameraudio.data.util.Constants
 import com.player.streameraudio.data.util.ExtM3UParser
@@ -17,6 +18,7 @@ import javax.inject.Singleton
 @Singleton
 class StreamResolver @Inject constructor(
     private val twitchGqlService: TwitchGqlService,
+    private val tokenStore: TokenStore,
     private val settingsRepository: PlaybackSettingsRepository,
     private val okHttpClient: OkHttpClient
 ) {
@@ -36,10 +38,22 @@ class StreamResolver @Inject constructor(
     private suspend fun direct(channelLogin: String): String? = withContext(Dispatchers.IO) {
         runCatching {
             val normalized = channelLogin.trim().lowercase()
-            val (token, signature) = twitchGqlService.getPlaybackAccessToken(
-                normalized,
-                Constants.TWITCH_GRAPHQL_CLIENT_ID
-            ) ?: return@withContext null
+            val userToken = tokenStore.read()?.accessToken?.takeIf { it.isNotBlank() }
+            val authenticatedToken = userToken?.let { accessToken ->
+                Constants.TWITCH_CLIENT_ID.takeIf { it.isNotBlank() }?.let { clientId ->
+                    twitchGqlService.getPlaybackAccessToken(
+                        channelName = normalized,
+                        clientId = clientId,
+                        accessToken = accessToken
+                    )
+                }
+            }
+            val (token, signature) = authenticatedToken
+                ?: twitchGqlService.getPlaybackAccessToken(
+                    channelName = normalized,
+                    clientId = Constants.TWITCH_GRAPHQL_CLIENT_ID
+                )
+                ?: return@withContext null
             val hlsUrl = twitchGqlService.buildHlsUrl(normalized, token, signature)
             parseAudioPlaylist(hlsUrl) ?: hlsUrl
         }.onFailure { Log.w(TAG, "Direct stream resolution failed") }.getOrNull()

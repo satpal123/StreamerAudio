@@ -25,7 +25,7 @@ class TwitchGqlService @Inject constructor(
     private val tag = "TwitchGqlService"
 
     @Volatile
-    private var cachedIntegrityToken: String? = null
+    private var cachedIntegrityToken: CachedIntegrityToken? = null
 
     // Twitch internal endpoint for integrity tokens
     private val integrityUrl = "https://gql.twitch.tv/integrity"
@@ -51,26 +51,36 @@ class TwitchGqlService @Inject constructor(
         }
     """
 
-    private fun Request.Builder.addCommonHeaders(clientId: String): Request.Builder {
-        return this
+    private fun Request.Builder.addCommonHeaders(
+        clientId: String,
+        accessToken: String? = null
+    ): Request.Builder {
+        val builder = this
             .header("Client-Id", clientId)
             .header("X-Device-Id", deviceId)
             .header("User-Agent", Constants.USER_AGENT)
             .header("Origin", origin)
             .header("Referer", referer)
             .header("Accept", "application/json")
+        if (!accessToken.isNullOrBlank()) {
+            builder.header("Authorization", "OAuth $accessToken")
+        }
+        return builder
     }
 
     /**
      * Fetches a new Integrity Token from Twitch.
      * This proves the request is coming from a "valid" client.
      */
-    private suspend fun fetchIntegrityToken(clientId: String): String? = withContext(Dispatchers.IO) {
+    private suspend fun fetchIntegrityToken(
+        clientId: String,
+        accessToken: String?
+    ): String? = withContext(Dispatchers.IO) {
         try {
             val request = Request.Builder()
                 .url(integrityUrl)
                 .post("{}".toRequestBody("application/json".toMediaType()))
-                .addCommonHeaders(clientId)
+                .addCommonHeaders(clientId, accessToken)
                 .build()
 
             client.newCall(request).execute().use { response ->
@@ -80,7 +90,7 @@ class TwitchGqlService @Inject constructor(
                 }
                 val token = JSONObject(response.body.string()).optString("token").takeIf { it.isNotBlank() }
                 if (token != null) {
-                    cachedIntegrityToken = token
+                    cachedIntegrityToken = CachedIntegrityToken(clientId, accessToken?.hashCode(), token)
                     return@withContext token
                 }
             }
@@ -99,23 +109,33 @@ class TwitchGqlService @Inject constructor(
      */
     suspend fun getPlaybackAccessToken(
         channelName: String,
-        clientId: String
+        clientId: String,
+        accessToken: String? = null
     ): Pair<String, String>? = withContext(Dispatchers.IO) {
 
         // First try with cached/new integrity token
-        val firstIntegrity = cachedIntegrityToken ?: fetchIntegrityToken(clientId)
-        val first = getPlaybackAccessTokenOnce(channelName, clientId, firstIntegrity)
+        val cached = cachedIntegrityToken?.takeIf {
+            it.clientId == clientId && it.authorizationHash == accessToken?.hashCode()
+        }?.token
+        val firstIntegrity = cached ?: fetchIntegrityToken(clientId, accessToken)
+        val first = getPlaybackAccessTokenOnce(channelName, clientId, accessToken, firstIntegrity)
         if (first != null) return@withContext first
 
         // If it failed, clear integrity and retry once (often fixes "stale/invalid integrity")
         cachedIntegrityToken = null
-        val secondIntegrity = fetchIntegrityToken(clientId)
-        return@withContext getPlaybackAccessTokenOnce(channelName, clientId, secondIntegrity)
+        val secondIntegrity = fetchIntegrityToken(clientId, accessToken)
+        return@withContext getPlaybackAccessTokenOnce(
+            channelName,
+            clientId,
+            accessToken,
+            secondIntegrity
+        )
     }
 
     private fun getPlaybackAccessTokenOnce(
         channelName: String,
         clientId: String,
+        accessToken: String?,
         integrityToken: String?
     ): Pair<String, String>? {
         return try {
@@ -133,7 +153,7 @@ class TwitchGqlService @Inject constructor(
             val requestBuilder = Request.Builder()
                 .url(Constants.TWITCH_GQL_ENDPOINT)
                 .post(payload.toString().toRequestBody("application/json".toMediaType()))
-                .addCommonHeaders(clientId)
+                .addCommonHeaders(clientId, accessToken)
 
             // Attach integrity if we have it
             if (!integrityToken.isNullOrBlank()) {
@@ -184,4 +204,10 @@ class TwitchGqlService @Inject constructor(
                 "&fast_bread=false" +
                 "&p=$random"
     }
+
+    private data class CachedIntegrityToken(
+        val clientId: String,
+        val authorizationHash: Int?,
+        val token: String
+    )
 }

@@ -2,8 +2,10 @@ package com.player.streameraudio.service
 
 import android.content.ComponentName
 import android.media.AudioManager
+import android.media.audiofx.LoudnessEnhancer
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -23,7 +25,15 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.MoreExecutors
 import com.player.streameraudio.data.util.Constants
+import com.player.streameraudio.domain.repository.PlaybackSettingsRepository
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -36,16 +46,24 @@ open class AudioPlayerService : MediaLibraryService() {
     const val MAX_BUFFER_MS = 180_000
     const val BUFFER_FOR_PLAYBACK_MS = 3_000
     const val BUFFER_AFTER_REBUFFER_MS = 12_000
+    const val VOLUME_LEVELING_GAIN_MB = 600
+    const val TAG = "AudioPlayerService"
   }
 
   protected var player: ExoPlayer? = null
   protected var mediaLibrarySession: MediaLibrarySession? = null
-  private lateinit var audioManager: AudioManager
+  private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+  private var volumeLevelingEnabled = false
+  private var activeAudioSessionId = AudioManager.ERROR
+  private var loudnessEnhancer: LoudnessEnhancer? = null
 
   private val handler = Handler(Looper.getMainLooper())
 
   @Inject
   lateinit var customMediaLibrarySessionCallback: CustomMediaLibrarySessionCallback
+
+  @Inject
+  lateinit var playbackSettingsRepository: PlaybackSettingsRepository
 
   @OptIn(UnstableApi::class)
   override fun onCreate() {
@@ -91,6 +109,23 @@ open class AudioPlayerService : MediaLibraryService() {
       .setWakeMode(C.WAKE_MODE_NETWORK)
       .build()
 
+    player?.addListener(object : Player.Listener {
+      override fun onAudioSessionIdChanged(audioSessionId: Int) {
+        activeAudioSessionId = audioSessionId
+        updateVolumeLeveling()
+      }
+    })
+
+    serviceScope.launch {
+      playbackSettingsRepository.settings
+        .map { it.volumeLevelingEnabled }
+        .distinctUntilChanged()
+        .collect { enabled ->
+          volumeLevelingEnabled = enabled
+          updateVolumeLeveling()
+        }
+    }
+
     val forwardingPlayer = object : ForwardingPlayer(player!!) {
       override fun getAvailableCommands(): Player.Commands =
         super.getAvailableCommands().buildUpon()
@@ -116,8 +151,6 @@ open class AudioPlayerService : MediaLibraryService() {
       customMediaLibrarySessionCallback
     ).build()
 
-    audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
-
     val token = SessionToken(this, ComponentName(this, PlaybackService::class.java))
     val controllerFuture = MediaController.Builder(this, token).buildAsync()
     controllerFuture.addListener({ controllerFuture.get() }, MoreExecutors.directExecutor())
@@ -126,8 +159,34 @@ open class AudioPlayerService : MediaLibraryService() {
   override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? =
     mediaLibrarySession
 
+  private fun updateVolumeLeveling() {
+    releaseVolumeLeveling()
+    if (!volumeLevelingEnabled || activeAudioSessionId <= 0) return
+
+    loudnessEnhancer = try {
+      LoudnessEnhancer(activeAudioSessionId).apply {
+        setTargetGain(VOLUME_LEVELING_GAIN_MB)
+        setEnabled(true)
+      }
+    } catch (error: Exception) {
+      Log.w(TAG, "Volume leveling is unavailable for this audio session", error)
+      null
+    }
+  }
+
+  private fun releaseVolumeLeveling() {
+    try {
+      loudnessEnhancer?.release()
+    } catch (_: Exception) {
+    } finally {
+      loudnessEnhancer = null
+    }
+  }
+
   @OptIn(UnstableApi::class)
   override fun onDestroy() {
+    serviceScope.cancel()
+    releaseVolumeLeveling()
     try {
       mediaLibrarySession?.release()
     } catch (_: Exception) {}

@@ -7,6 +7,7 @@ import com.player.streameraudio.data.settings.LastPlayedStream
 import com.player.streameraudio.data.settings.ProxyEndpoint
 import com.player.streameraudio.data.settings.ProxyEndpointValidator
 import com.player.streameraudio.data.settings.ProxyValidationResult
+import com.player.streameraudio.data.settings.SavedStream
 import com.player.streameraudio.data.settings.UserSettings
 import com.player.streameraudio.domain.repository.PlaybackSettingsRepository
 import kotlinx.coroutines.CoroutineScope
@@ -112,9 +113,48 @@ class PlaybackSettingsRepositoryImpl @Inject constructor(
     override suspend fun getLastPlayedStream(): LastPlayedStream? =
         dataStore.data.first().lastPlayedStream
 
+    override suspend fun addRecentStream(stream: SavedStream) {
+        dataStore.updateData { current ->
+            current.copy(
+                recentStreams = (listOf(stream) + current.recentStreams.filterNot {
+                    it.stableKey == stream.stableKey
+                }).take(MAX_RECENT_STREAMS)
+            )
+        }
+    }
+
+    override suspend fun toggleFavorite(stream: SavedStream): Boolean {
+        var isFavorite = false
+        dataStore.updateData { current ->
+            val exists = current.favoriteStreams.any { it.stableKey == stream.stableKey }
+            isFavorite = !exists
+            current.copy(
+                favoriteStreams = if (exists) {
+                    current.favoriteStreams.filterNot { it.stableKey == stream.stableKey }
+                } else {
+                    (listOf(stream) + current.favoriteStreams).take(MAX_FAVORITE_STREAMS)
+                }
+            )
+        }
+        return isFavorite
+    }
+
+    override suspend fun clearRecentStreams() {
+        dataStore.updateData { it.copy(recentStreams = emptyList()) }
+    }
+
+    override suspend fun setVolumeLevelingEnabled(enabled: Boolean) {
+        dataStore.updateData { it.copy(volumeLevelingEnabled = enabled) }
+    }
+
     private fun normalized(name: String, baseUrl: String): Result<String> =
         when (val validation = ProxyEndpointValidator.validate(name, baseUrl)) {
             is ProxyValidationResult.Valid -> Result.success(validation.normalizedUrl)
             is ProxyValidationResult.Invalid -> Result.failure(IllegalArgumentException(validation.message))
         }
+
+    private companion object {
+        const val MAX_RECENT_STREAMS = 50
+        const val MAX_FAVORITE_STREAMS = 100
+    }
 }

@@ -3,6 +3,7 @@ package com.player.streameraudio.domain.repository
 import com.player.streameraudio.data.settings.PlaybackMode
 import com.player.streameraudio.data.settings.LastPlayedStream
 import com.player.streameraudio.data.settings.ProxyEndpoint
+import com.player.streameraudio.data.settings.SavedStream
 import com.player.streameraudio.data.settings.UserSettings
 import kotlinx.coroutines.flow.StateFlow
 
@@ -19,4 +20,8 @@ interface PlaybackSettingsRepository {
     suspend fun setSleepTimerDeadline(deadlineEpochMs: Long?)
     suspend fun setLastPlayedStream(stream: LastPlayedStream?)
     suspend fun getLastPlayedStream(): LastPlayedStream?
+    suspend fun addRecentStream(stream: SavedStream)
+    suspend fun toggleFavorite(stream: SavedStream): Boolean
+    suspend fun clearRecentStreams()
+    suspend fun setVolumeLevelingEnabled(enabled: Boolean)
 }
