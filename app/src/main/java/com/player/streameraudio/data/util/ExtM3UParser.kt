@@ -15,9 +15,9 @@ class ExtM3UParser {
                     }
                 }
                 line.startsWith("#EXT-X-STREAM-INF") -> {
-                    currentEntry?.let {
-                        parseStreamInf(line, it)
-                    }
+                    val entry = currentEntry ?: ExtMediaEntry().also(entries::add)
+                    parseStreamInf(line, entry)
+                    currentEntry = entry
                 }
                 line.startsWith("http") || line.startsWith("https") -> {
                     currentEntry?.apply {
@@ -32,54 +32,61 @@ class ExtM3UParser {
     }
 
     private fun parseExtMedia(line: String): ExtMediaEntry? {
-        val parts = line.split(',').map { it.trim() }
-
-        if (parts.isEmpty()) return null
-
+        val attributes = parseAttributes(line.substringAfter(':', ""))
         val entry = ExtMediaEntry()
 
-        // Extract TYPE from first part (e.g., "#EXT-X-MEDIA:TYPE=VIDEO")
-        val firstPart = parts[0]
-        if (firstPart.contains("TYPE=")) {
-            entry.type = firstPart.substringAfter("TYPE=").trim()
-        }
-
-        // Parse remaining key-value pairs
-        parts.drop(1).forEach { part ->
-            val keyValue = part.split('=', limit = 2)
-            if (keyValue.size == 2) {
-                val key = keyValue[0].trim()
-                val value = keyValue[1].trim().trim('"')
-
-                when (key) {
-                    "GROUP-ID" -> entry.groupId = value
-                    "NAME" -> entry.name = value
-                    "AUTOSELECT" -> entry.autoSelect = value.equals("YES", ignoreCase = true)
-                    "DEFAULT" -> entry.default = value.equals("YES", ignoreCase = true)
-                }
-            }
-        }
+        entry.type = attributes["TYPE"]
+        entry.groupId = attributes["GROUP-ID"]
+        entry.name = attributes["NAME"]
+        entry.autoSelect = attributes["AUTOSELECT"].equals("YES", ignoreCase = true)
+        entry.default = attributes["DEFAULT"].equals("YES", ignoreCase = true)
 
         return entry
     }
 
     private fun parseStreamInf(line: String, entry: ExtMediaEntry) {
-        val parts = line.split(',').map { it.trim() }
-        parts.forEach { part ->
-            val keyValue = part.split('=', limit = 2)
-            if (keyValue.size == 2) {
-                val key = keyValue[0].trim()
-                val value = keyValue[1].trim().trim('"')
+        val attributes = parseAttributes(line.substringAfter(':', ""))
+        entry.name = entry.name
+            ?: attributes["NAME"]
+            ?: attributes["IVS-NAME"]
+            ?: attributes["STABLE-VARIANT-ID"]
+        entry.bandwidth = attributes["BANDWIDTH"]?.toLongOrNull()
+        entry.resolution = attributes["RESOLUTION"]
+        entry.codecs = attributes["CODECS"]
+        entry.video = attributes["VIDEO"]
+        entry.frameRate = attributes["FRAME-RATE"]?.toDoubleOrNull()
+    }
 
-                when (key) {
-                    "BANDWIDTH" -> entry.bandwidth = value.toLongOrNull()
-                    "RESOLUTION" -> entry.resolution = value
-                    "CODECS" -> entry.codecs = value
-                    "VIDEO" -> entry.video = value
-                    "FRAME-RATE" -> entry.frameRate = value.toDoubleOrNull()
+    /**
+     * HLS attribute lists are comma-separated, except that quoted values (notably CODECS)
+     * may themselves contain commas. A tiny state machine is more reliable than splitting.
+     */
+    private fun parseAttributes(value: String): Map<String, String> {
+        val attributes = linkedMapOf<String, String>()
+        var start = 0
+        var quoted = false
+
+        fun consume(end: Int) {
+            val part = value.substring(start, end).trim()
+            val separator = part.indexOf('=')
+            if (separator > 0) {
+                val key = part.substring(0, separator).trim()
+                val rawValue = part.substring(separator + 1).trim()
+                attributes[key] = rawValue.removeSurrounding("\"")
+            }
+        }
+
+        value.forEachIndexed { index, character ->
+            when (character) {
+                '"' -> quoted = !quoted
+                ',' -> if (!quoted) {
+                    consume(index)
+                    start = index + 1
                 }
             }
         }
+        consume(value.length)
+        return attributes
     }
 }
 

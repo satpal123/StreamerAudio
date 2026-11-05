@@ -60,12 +60,13 @@ class GetValidTokenUseCaseTest {
 
         // Second emission: Success
         assertTrue(result[1] is ResponseState.Success)
-        assertEquals(expectedValidation, result[1].data)
-        assertEquals("client_id_123", result[1].data?.clientId)
-        assertEquals("test_user", result[1].data?.login)
-        assertEquals(2, result[1].data?.scopes?.size)
-        assertEquals("user_123", result[1].data?.userId)
-        assertEquals(3600L, result[1].data?.expiresIn)
+        val successData = (result[1] as ResponseState.Success).data!!
+        assertEquals(expectedValidation, successData)
+        assertEquals("client_id_123", successData.clientId)
+        assertEquals("test_user", successData.login)
+        assertEquals(2, successData.scopes.size)
+        assertEquals("user_123", successData.userId)
+        assertEquals(3600L, successData.expiresIn)
 
         // Verify repository was called
         coVerify(exactly = 1) { repository.validateAccessToken(authorization) }
@@ -90,11 +91,11 @@ class GetValidTokenUseCaseTest {
 
         // Then
         val successState = result.last() as ResponseState.Success
-        assertEquals("different_client", successState.data.clientId)
-        assertEquals("another_user", successState.data.login)
-        assertEquals(1, successState.data.scopes.size)
-        assertEquals("user_456", successState.data.userId)
-        assertEquals(7200L, successState.data.expiresIn)
+        assertEquals("different_client", successState.data!!.clientId)
+        assertEquals("another_user", successState.data!!.login)
+        assertEquals(1, successState.data!!.scopes.size)
+        assertEquals("user_456", successState.data!!.userId)
+        assertEquals(7200L, successState.data!!.expiresIn)
     }
 
     @Test
@@ -121,9 +122,9 @@ class GetValidTokenUseCaseTest {
 
         // Then
         val successState = result.last() as ResponseState.Success
-        assertEquals(4, successState.data.scopes.size)
-        assertTrue(successState.data.scopes.contains("user:read:email"))
-        assertTrue(successState.data.scopes.contains("channel:read:subscriptions"))
+        assertEquals(4, successState.data!!.scopes.size)
+        assertTrue(successState.data!!.scopes.contains("user:read:email"))
+        assertTrue(successState.data!!.scopes.contains("channel:read:subscriptions"))
     }
 
     @Test
@@ -145,7 +146,7 @@ class GetValidTokenUseCaseTest {
 
         // Then
         val successState = result.last() as ResponseState.Success
-        assertTrue(successState.data.scopes.isEmpty())
+        assertTrue(successState.data!!.scopes.isEmpty())
     }
 
     // ========== Error Scenarios: 401 Unauthorized ==========
@@ -422,10 +423,10 @@ class GetValidTokenUseCaseTest {
         val success1 = result1.last() as ResponseState.Success
         val success2 = result2.last() as ResponseState.Success
 
-        assertEquals("user1", success1.data.login)
-        assertEquals("user2", success2.data.login)
-        assertEquals(3600L, success1.data.expiresIn)
-        assertEquals(7200L, success2.data.expiresIn)
+        assertEquals("user1", success1.data!!.login)
+        assertEquals("user2", success2.data!!.login)
+        assertEquals(3600L, success1.data!!.expiresIn)
+        assertEquals(7200L, success2.data!!.expiresIn)
 
         coVerify(exactly = 1) { repository.validateAccessToken(token1) }
         coVerify(exactly = 1) { repository.validateAccessToken(token2) }

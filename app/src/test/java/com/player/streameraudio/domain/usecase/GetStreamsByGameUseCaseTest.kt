@@ -100,7 +100,7 @@ class GetStreamsByGameUseCaseTest {
 
         // Second emission: Success
         assertTrue(result[1] is ResponseState.Success)
-        val successData = result[1].data!!
+        val successData = (result[1] as ResponseState.Success).data!!
         assertEquals(2, successData.first.size)
         assertEquals("next_cursor_abc", successData.second)
         assertEquals("stream1", successData.first[0].id)
@@ -146,9 +146,9 @@ class GetStreamsByGameUseCaseTest {
 
         // Then
         val successState = result.last() as ResponseState.Success
-        assertEquals(1, successState.data.first.size)
-        assertEquals("final_cursor", successState.data.second)
-        assertEquals("stream3", successState.data.first[0].id)
+        assertEquals(1, successState.data!!.first.size)
+        assertEquals("final_cursor", successState.data!!.second)
+        assertEquals("stream3", successState.data!!.first[0].id)
 
         coVerify(exactly = 1) {
             repository.getStreamsByGame(testAuthorization, testClientId, testGameId, afterCursor)
@@ -187,8 +187,8 @@ class GetStreamsByGameUseCaseTest {
 
         // Then
         val successState = result.last() as ResponseState.Success
-        assertEquals(1, successState.data.first.size)
-        assertNull(successState.data.second)
+        assertEquals(1, successState.data!!.first.size)
+        assertNull(successState.data!!.second)
     }
 
     @Test
@@ -205,8 +205,8 @@ class GetStreamsByGameUseCaseTest {
 
         // Then
         val successState = result.last() as ResponseState.Success
-        assertTrue(successState.data.first.isEmpty())
-        assertNull(successState.data.second)
+        assertTrue(successState.data!!.first.isEmpty())
+        assertNull(successState.data!!.second)
     }
 
     @Test
@@ -246,10 +246,10 @@ class GetStreamsByGameUseCaseTest {
         val success1 = result1.last() as ResponseState.Success
         val success2 = result2.last() as ResponseState.Success
 
-        assertEquals("Game One", success1.data.first[0].gameName)
-        assertEquals("Game Two", success2.data.first[0].gameName)
-        assertEquals(100L, success1.data.first[0].viewerCount)
-        assertEquals(200L, success2.data.first[0].viewerCount)
+        assertEquals("Game One", success1.data!!.first[0].gameName)
+        assertEquals("Game Two", success2.data!!.first[0].gameName)
+        assertEquals(100L, success1.data!!.first[0].viewerCount)
+        assertEquals(200L, success2.data!!.first[0].viewerCount)
     }
 
     @Test
@@ -273,7 +273,7 @@ class GetStreamsByGameUseCaseTest {
 
         // Then
         val successState = result.last() as ResponseState.Success
-        assertEquals(50000L, successState.data.first[0].viewerCount)
+        assertEquals(50000L, successState.data!!.first[0].viewerCount)
     }
 
     @Test
@@ -307,10 +307,10 @@ class GetStreamsByGameUseCaseTest {
 
         // Then
         val successState = result.last() as ResponseState.Success
-        assertEquals(3, successState.data.first.size)
-        assertEquals(5000L, successState.data.first[0].viewerCount)
-        assertEquals(3000L, successState.data.first[1].viewerCount)
-        assertEquals(1000L, successState.data.first[2].viewerCount)
+        assertEquals(3, successState.data!!.first.size)
+        assertEquals(5000L, successState.data!!.first[0].viewerCount)
+        assertEquals(3000L, successState.data!!.first[1].viewerCount)
+        assertEquals(1000L, successState.data!!.first[2].viewerCount)
     }
 
     @Test
@@ -344,10 +344,10 @@ class GetStreamsByGameUseCaseTest {
 
         // Then
         val successState = result.last() as ResponseState.Success
-        assertEquals(3, successState.data.first.size)
-        assertEquals("en", successState.data.first[0].language)
-        assertEquals("es", successState.data.first[1].language)
-        assertEquals("ja", successState.data.first[2].language)
+        assertEquals(3, successState.data!!.first.size)
+        assertEquals("en", successState.data!!.first[0].language)
+        assertEquals("es", successState.data!!.first[1].language)
+        assertEquals("ja", successState.data!!.first[2].language)
     }
 
     // ========== Error Scenarios: HTTP Exceptions ==========
@@ -528,7 +528,7 @@ class GetStreamsByGameUseCaseTest {
 
         // Then
         val successState = result.last() as ResponseState.Success
-        assertTrue(successState.data.first.isEmpty())
+        assertTrue(successState.data!!.first.isEmpty())
 
         coVerify(exactly = 1) {
             repository.getStreamsByGame(testAuthorization, testClientId, emptyGameId, null)
@@ -557,7 +557,7 @@ class GetStreamsByGameUseCaseTest {
 
         // Then
         val successState = result.last() as ResponseState.Success
-        assertEquals(numericGameId, successState.data.first[0].gameId)
+        assertEquals(numericGameId, successState.data!!.first[0].gameId)
     }
 
     @Test
@@ -581,6 +581,6 @@ class GetStreamsByGameUseCaseTest {
 
         // Then
         val successState = result.last() as ResponseState.Success
-        assertEquals(0L, successState.data.first[0].viewerCount)
+        assertEquals(0L, successState.data!!.first[0].viewerCount)
     }
 }

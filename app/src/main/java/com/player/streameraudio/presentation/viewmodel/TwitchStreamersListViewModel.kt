@@ -29,7 +29,7 @@ class TwitchStreamersListViewModel @Inject constructor(
                 when(it){
                     is ResponseState.Success ->{
                         // Extract the list from the Pair (first element)
-                        val (streamsList, _) = it.data ?: Pair(emptyList(), null)
+                        val (streamsList, nextCursor) = (it.data ?: Pair(emptyList(), null))
                         _twitchStreamsState.value = TwitchStreamersState(streamersList = streamsList)
                     }
                     is ResponseState.Loading ->{

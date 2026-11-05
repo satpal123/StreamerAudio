@@ -21,4 +21,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Streamer Audio"
 include(":app")
- 
+include(":baselineprofile")

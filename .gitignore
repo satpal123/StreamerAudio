@@ -106,6 +106,8 @@ Thumbs.db
 # Misc
 *.swp
 *~
+.codex_tmp/
+dist/
 .gradle
 .idea/
 local.properties

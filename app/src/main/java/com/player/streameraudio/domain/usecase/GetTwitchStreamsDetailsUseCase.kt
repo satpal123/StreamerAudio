@@ -19,7 +19,8 @@ class GetTwitchStreamsDetailsUseCase @Inject constructor(
         try {
 
             emit(ResponseState.Loading<List<TwitchStream>>())
-            val twitchStreamersList = repository.getStreamsInfo(userId, authorization, clientId).streamers.map {
+            val twitchStreamersList = repository.getStreamsInfo(userId, authorization, clientId)
+                .streamers.map {
                 it
             }
 

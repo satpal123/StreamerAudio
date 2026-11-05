@@ -4,18 +4,18 @@
 [![Latest release](https://img.shields.io/github/v/release/satpal123/StreamerAudio)](https://github.com/satpal123/StreamerAudio/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Streamer Audio is an independent Android app for listening to live Twitch streams as audio. It supports guest browsing, optional Twitch sign-in for followed channels, user-managed HTTPS playback proxies, background playback, sleep timers, and Android Auto.
+Streamer Audio is an independent Android app for listening to live Twitch streams as audio. It supports guest browsing, optional Twitch sign-in for followed channels, an on-device Favorites and Recently played library, user-managed HTTPS playback proxies, background playback, sleep timers, and Android Auto.
 
 Streamer Audio is not affiliated with, endorsed by, or sponsored by Twitch Interactive, Inc.
 
 ## Install
 
-The latest stable version is **2.0.0** (version code 2).
+The latest stable version is **2.1.0** (version code 3).
 
-This README documents the stable 2.0.0 release. Use the [`v2.0.0` tag](https://github.com/satpal123/StreamerAudio/tree/v2.0.0) when checking out the corresponding source.
+This README documents the stable 2.1.0 release. Use the [`v2.1.0` tag](https://github.com/satpal123/StreamerAudio/tree/v2.1.0) when checking out the corresponding source.
 
-- [Download the signed Android APK](https://github.com/satpal123/StreamerAudio/releases/download/v2.0.0/StreamerAudio-v2.0.0-2-b6ddba1-release.apk) for direct installation and testing.
-- [Open the v2.0.0 release](https://github.com/satpal123/StreamerAudio/releases/tag/v2.0.0) to view release notes and download the Play Store AAB.
+- [Open the latest release](https://github.com/satpal123/StreamerAudio/releases/latest) to download the signed Android APK or Play Store AAB.
+- [Open the v2.1.0 release](https://github.com/satpal123/StreamerAudio/releases/tag/v2.1.0) to view its complete release notes.
 - Read the [changelog](CHANGELOG.md) for the complete release summary.
 
 Android may ask you to allow installation from the browser or file manager used to open the APK. The AAB is intended for Google Play and cannot be installed directly on a phone.
@@ -43,16 +43,18 @@ Live channels, artwork, viewer totals, and theme colours vary over time and by a
   <img src="screenshots/08_android_auto_now_playing.png" width="400" alt="Android Auto now playing screen" />
 </p>
 
-## 2.0 highlights
+## 2.1 highlights
 
 - Single-activity Jetpack Compose and Material 3 UI with adaptive bottom navigation/navigation rail
 - Direct playback by default; no bundled or recommended proxy services
 - Optional HTTPS proxy endpoints created and managed by the user
 - AndroidX Auth Tabs OAuth with a verified HTTPS App Link callback and random `state`
 - Android Keystore-backed token storage in no-backup storage
-- Media3 playback, persistent mini-player, retry, and 15/30/45/60 minute sleep timers
+- Media3 playback, optional volume leveling, persistent mini-player, retry, and 15/30/45/60 minute sleep timers
 - Search for live channels while signed in, automatic paging, responsive category browsing, and account/profile details
-- Android Auto media browsing with stable Following, Categories, Live, and Search roots
+- Device-local Favorites and Recently played for guests and signed-in users
+- Authenticated-first direct playback with safe anonymous fallback when Twitch does not accept account playback
+- Android Auto media browsing with stable Favorites, Recently played, Following, Categories, Live, and Search roots
 - Deterministic `screenshot` build type for store captures
 
 ## Requirements
@@ -96,7 +98,7 @@ Deleting the selected endpoint resets routing to Direct. Optional fallback only 
 
 ## Local release signing
 
-Create an RSA upload key outside this repository, enrol in Play App Signing, and expose these environment variables when building locally:
+Create an RSA upload key outside this repository, enrol the app in Play App Signing, and expose these environment variables when building locally:
 
 ```text
 ANDROID_KEYSTORE_PATH
@@ -111,11 +113,11 @@ ANDROID_KEY_PASSWORD
 ./gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleRelease :app:bundleRelease
 ```
 
-The checked-in `assetlinks.json` trusts the CI-signed release APK and the local debug build. Before Play testing, add the Google Play **app-signing** certificate fingerprint to the release package entry as an additional fingerprint; Play-generated APKs are not signed with the upload key. Deployment and Play Console steps are tracked in the [release checklist](https://github.com/satpal123/StreamerAudio/blob/v2.0.0/play/RELEASE_CHECKLIST.md).
+The checked-in `assetlinks.json` trusts the CI-signed APK and the local debug build. Before Play testing, add the Google Play **app-signing** certificate fingerprint to the release package entry as an additional fingerprint; Play-generated APKs are not signed with the upload key. Deployment and Play Console steps are tracked in [`play/RELEASE_CHECKLIST.md`](play/RELEASE_CHECKLIST.md).
 
 ## GitHub Actions
 
-The [`Android CI and Release`](https://github.com/satpal123/StreamerAudio/blob/v2.0.0/.github/workflows/android-build.yml) workflow uses JDK 17 and behaves as follows:
+The [`Android CI and Release`](.github/workflows/android-build.yml) workflow uses JDK 17 and behaves as follows:
 
 | Event | Verification | Signed outputs | GitHub release |
 | --- | --- | --- | --- |
@@ -128,8 +130,8 @@ The [`Android CI and Release`](https://github.com/satpal123/StreamerAudio/blob/v
 Develop pre-releases use tags such as `develop-2.0.0.42`. Production releases are created from explicit version tags:
 
 ```shell
-git tag -a v2.0.0 -m "Streamer Audio 2.0.0"
-git push origin v2.0.0
+git tag -a v2.1.0 -m "Streamer Audio 2.1.0"
+git push origin v2.1.0
 ```
 
 Configure these repository secrets under **Settings → Secrets and variables → Actions**:
@@ -157,7 +159,7 @@ Authentication tokens are AES-GCM encrypted with a non-exportable Android Keysto
 - OAuth callback: <https://streameraudio-twitch-backend.netlify.app/oauth/callback>
 - Releases: <https://github.com/satpal123/StreamerAudio/releases>
 
-Deployable static source and the Digital Asset Links files are under [`play/netlify`](https://github.com/satpal123/StreamerAudio/tree/v2.0.0/play/netlify). Deploy that directory whenever a signing fingerprint changes, then verify `/.well-known/assetlinks.json` returns the release package and certificate without a redirect.
+Deployable static source and the Digital Asset Links files are under [`play/netlify`](play/netlify). Deploy that directory whenever a signing fingerprint changes, then verify `/.well-known/assetlinks.json` returns the release package and certificate without a redirect.
 
 ## License
 

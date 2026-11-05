@@ -1,71 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Splash screen icon - larger and designed for splash screen display -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="288dp"
     android:height="288dp"
     android:viewportWidth="288"
     android:viewportHeight="288">
-
-    <!-- Headphones icon - centered and properly sized for splash -->
+    <path android:pathData="M144,40 A104,104 0,1 1,144,248 A104,104 0,1 1,144,40 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="70"
+                android:startY="218"
+                android:endX="218"
+                android:endY="70"
+                android:type="linear">
+                <item android:color="#4D00E6" android:offset="0" />
+                <item android:color="#8A00FF" android:offset="0.52" />
+                <item android:color="#ED00E8" android:offset="1" />
+            </gradient>
+        </aapt:attr>
+    </path>
     <group
-        android:translateX="144"
-        android:translateY="144">
-
-        <!-- Headband -->
+        android:scaleX="1.55"
+        android:scaleY="1.55"
+        android:pivotX="54"
+        android:pivotY="54"
+        android:translateX="90"
+        android:translateY="90">
         <path
-            android:pathData="M -70,-15 Q -70,-85 0,-85 Q 70,-85 70,-15"
-            android:strokeColor="#9147ff"
-            android:strokeWidth="20"
-            android:strokeLineCap="round"
-            android:fillColor="#00000000"/>
-
-        <!-- Left ear cup outer -->
-        <path
-            android:pathData="M -85,-15 L -45,-15 L -45,47 L -85,47 Z"
-            android:fillColor="#9147ff"/>
-
-        <!-- Left ear cup inner -->
-        <path
-            android:pathData="M -79,-9 L -51,-9 L -51,41 L -79,41 Z"
-            android:fillColor="#FFFFFF"/>
-
-        <!-- Right ear cup outer -->
-        <path
-            android:pathData="M 45,-15 L 85,-15 L 85,47 L 45,47 Z"
-            android:fillColor="#9147ff"/>
-
-        <!-- Right ear cup inner -->
-        <path
-            android:pathData="M 51,-9 L 79,-9 L 79,41 L 51,41 Z"
-            android:fillColor="#FFFFFF"/>
-
-        <!-- Sound wave 1 -->
-        <path
-            android:pathData="M 100,-12 Q 115,0 100,12"
-            android:strokeColor="#9147ff"
-            android:strokeWidth="6"
-            android:strokeLineCap="round"
-            android:fillColor="#00000000"
-            android:fillAlpha="0.8"/>
-
-        <!-- Sound wave 2 -->
-        <path
-            android:pathData="M 108,-20 Q 130,0 108,20"
-            android:strokeColor="#9147ff"
-            android:strokeWidth="6"
-            android:strokeLineCap="round"
-            android:fillColor="#00000000"
-            android:fillAlpha="0.5"/>
-
-        <!-- Play button circle background -->
-        <path
-            android:pathData="M 0,23 m -27,0 a 27,27 0 1,0 54,0 a 27,27 0 1,0 -54,0"
-            android:fillColor="#9147ff"
-            android:fillAlpha="0.15"/>
-
-        <!-- Play button triangle -->
-        <path
-            android:pathData="M -8,12 L -8,34 L 12,23 Z"
-            android:fillColor="#9147ff"/>
+            android:fillColor="#FFFFFF"
+            android:pathData="M24,45 C20.7,45 18,47.7 18,51 L18,59 C18,62.3 20.7,65 24,65 C27.3,65 30,62.3 30,59 L30,51 C30,47.7 27.3,45 24,45 Z M39,35 C35.7,35 33,37.7 33,41 L33,69 C33,72.3 35.7,75 39,75 C42.3,75 45,72.3 45,69 L45,41 C45,37.7 42.3,35 39,35 Z M54,23 C50.7,23 48,25.7 48,29 L48,81 C48,84.3 50.7,87 54,87 C57.3,87 60,84.3 60,81 L60,29 C60,25.7 57.3,23 54,23 Z M69,33 C65.7,33 63,35.7 63,39 L63,71 C63,74.3 65.7,77 69,77 C72.3,77 75,74.3 75,71 L75,39 C75,35.7 72.3,33 69,33 Z M84,42 C80.7,42 78,44.7 78,48 L78,62 C78,65.3 80.7,68 84,68 C87.3,68 90,65.3 90,62 L90,48 C90,44.7 87.3,42 84,42 Z" />
     </group>
 </vector>

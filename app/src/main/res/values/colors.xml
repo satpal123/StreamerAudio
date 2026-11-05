@@ -11,4 +11,5 @@
     <color name="deletecolor">#DD3124</color>
     <color name="archiveColor">#3AE015</color>
     <color name="grey">#232323</color>
+    <color name="streamer_audio_splash_background">#0E0D12</color>
 </resources>

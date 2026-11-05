@@ -18,7 +18,7 @@ class ResponseStateTest {
 
         assertNull(state.data)
         assertNull(state.message)
-        assertTrue(state is ResponseState.Loading)
+        assertTrue(state is ResponseState.Loading<*>)
     }
 
     @Test
@@ -28,7 +28,7 @@ class ResponseStateTest {
 
         assertEquals(testData, state.data)
         assertNull(state.message)
-        assertTrue(state is ResponseState.Loading)
+        assertTrue(state is ResponseState.Loading<*>)
     }
 
     @Test
@@ -69,7 +69,7 @@ class ResponseStateTest {
 
         assertEquals(testData, state.data)
         assertNull(state.message)
-        assertTrue(state is ResponseState.Success)
+        assertTrue(state is ResponseState.Success<*>)
     }
 
     @Test
@@ -95,8 +95,9 @@ class ResponseStateTest {
         val state = ResponseState.Success(testData)
 
         assertEquals(testData, state.data)
-        assertEquals(5, state.data.size)
-        assertEquals(1, state.data[0])
+        assertNotNull(state.data)
+        assertEquals(5, state.data!!.size)
+        assertEquals(1, state.data!![0])
     }
 
     @Test
@@ -105,8 +106,9 @@ class ResponseStateTest {
         val state = ResponseState.Success(testData)
 
         assertEquals(testData, state.data)
-        assertEquals("value1", state.data["key1"])
-        assertEquals(2, state.data.size)
+        assertNotNull(state.data)
+        assertEquals("value1", state.data!!["key1"])
+        assertEquals(2, state.data!!.size)
     }
 
     @Test
@@ -116,9 +118,10 @@ class ResponseStateTest {
         val state = ResponseState.Success(response)
 
         assertEquals(response, state.data)
-        assertEquals(200, state.data.code)
-        assertEquals("OK", state.data.message)
-        assertEquals(3, state.data.data.size)
+        assertNotNull(state.data)
+        assertEquals(200, state.data!!.code)
+        assertEquals("OK", state.data!!.message)
+        assertEquals(3, state.data!!.data.size)
     }
 
     @Test
@@ -136,7 +139,7 @@ class ResponseStateTest {
         val state = ResponseState.Success(testData)
 
         assertNull(state.data)
-        assertTrue(state is ResponseState.Success)
+        assertTrue(state is ResponseState.Success<*>)
     }
 
     @Test
@@ -152,7 +155,7 @@ class ResponseStateTest {
         val state = ResponseState.Success(emptyList<String>())
 
         assertNotNull(state.data)
-        assertTrue(state.data.isEmpty())
+        assertTrue(state.data!!.isEmpty())
     }
 
     // ========== Error State Tests ==========
@@ -164,7 +167,7 @@ class ResponseStateTest {
 
         assertEquals(errorMessage, state.message)
         assertNull(state.data)
-        assertTrue(state is ResponseState.Error)
+        assertTrue(state is ResponseState.Error<*>)
     }
 
     @Test
@@ -248,14 +251,14 @@ class ResponseStateTest {
     @Test
     fun `Different states can be assigned to same variable`() {
         var state: ResponseState<String> = ResponseState.Loading()
-        assertTrue(state is ResponseState.Loading)
+        assertTrue(state is ResponseState.Loading<*>)
 
         state = ResponseState.Success("Success")
-        assertTrue(state is ResponseState.Success)
+        assertTrue(state is ResponseState.Success<*>)
         assertEquals("Success", state.data)
 
         state = ResponseState.Error("Error")
-        assertTrue(state is ResponseState.Error)
+        assertTrue(state is ResponseState.Error<*>)
         assertEquals("Error", state.message)
     }
 
@@ -269,9 +272,9 @@ class ResponseStateTest {
 
         val results = states.map { state ->
             when (state) {
-                is ResponseState.Loading -> "Loading"
-                is ResponseState.Success -> "Success: ${state.data}"
-                is ResponseState.Error -> "Error: ${state.message}"
+                is ResponseState.Loading<*> -> "Loading"
+                is ResponseState.Success<*> -> "Success: ${state.data}"
+                is ResponseState.Error<*> -> "Error: ${state.message}"
             }
         }
 
@@ -291,8 +294,10 @@ class ResponseStateTest {
         val state = ResponseState.Success(paginatedData)
 
         assertEquals(paginatedData, state.data)
-        assertEquals(2, state.data.data.size)
-        assertEquals("next_cursor", state.data.cursor)
+        assertNotNull(state.data)
+        assertEquals(2, state.data!!.data.size)
+        assertNotNull(state.data)
+        assertEquals("next_cursor", state.data!!.cursor)
     }
 
     @Test
@@ -301,8 +306,9 @@ class ResponseStateTest {
         val state = ResponseState.Success(testData)
 
         assertEquals(testData, state.data)
-        assertEquals(3, state.data.first.size)
-        assertEquals("cursor_123", state.data.second)
+        assertNotNull(state.data)
+        assertEquals(3, state.data!!.first.size)
+        assertEquals("cursor_123", state.data!!.second)
     }
 
     // ========== Edge Cases ==========
@@ -326,13 +332,15 @@ class ResponseStateTest {
 
         val errorState = ResponseState.Error("Error occurred", testData)
         val successState = ResponseState.Success(testData)
+        val errorAsState: ResponseState<*> = errorState
+        val successAsState: ResponseState<*> = successState
 
         assertEquals(testData, errorState.data)
         assertEquals(testData, successState.data)
         assertNotNull(errorState.message)
         assertNull(successState.message)
-        assertFalse(errorState is ResponseState.Success)
-        assertFalse(successState is ResponseState.Error)
+        assertFalse(errorAsState is ResponseState.Success<*>)
+        assertFalse(successAsState is ResponseState.Error<*>)
     }
 
     @Test
@@ -351,9 +359,12 @@ class ResponseStateTest {
         val largeList = (1..10000).toList()
         val state = ResponseState.Success(largeList)
 
-        assertEquals(10000, state.data.size)
-        assertEquals(1, state.data.first())
-        assertEquals(10000, state.data.last())
+        assertNotNull(state.data)
+        assertEquals(10000, state.data!!.size)
+        assertNotNull(state.data)
+        assertNotNull(state.data)
+        assertEquals(1, state.data!!.first())
+        assertEquals(10000, state.data!!.last())
     }
 
     @Test
@@ -376,8 +387,9 @@ class ResponseStateTest {
         )
         val state = ResponseState.Success(nestedData)
 
-        assertEquals(3, state.data.size)
-        assertEquals(2, state.data[0][1])
-        assertEquals(9, state.data[2][2])
+        assertNotNull(state.data)
+        assertEquals(3, state.data!!.size)
+        assertEquals(2, state.data!![0][1])
+        assertEquals(9, state.data!![2][2])
     }
 }
