@@ -2,6 +2,13 @@
 
 All notable user-facing changes to Streamer Audio are documented here.
 
+## 2.2.0 preview - 2026-11-09
+
+- Added automatic and manual update checks.
+- Added Google Play's flexible in-app update flow for Play Store installations.
+- Added signed GitHub APK update links for direct installations.
+- Added an optional Ko-fi support button in Settings and the project README.
+
 ## [2.1.0](https://github.com/satpal123/StreamerAudio/releases/tag/v2.1.0) - 2026-11-05
 
 Streamer Audio 2.1 adds a device-local listening library, improves authenticated playback, expands Android Auto browsing, and introduces optional volume leveling.

@@ -127,8 +127,11 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import coil3.compose.AsyncImage
+import com.player.streameraudio.BuildConfig
 import com.player.streameraudio.data.settings.PlaybackMode
 import com.player.streameraudio.data.settings.ProxyEndpoint
+import com.player.streameraudio.presentation.update.AppUpdateUiState
+import com.player.streameraudio.presentation.update.UpdateAction
 import com.player.streameraudio.presentation.viewmodel.MainUiState
 import com.player.streameraudio.presentation.viewmodel.MainViewModel
 import com.player.streameraudio.service.CustomMediaLibrarySessionCallback
@@ -145,7 +148,15 @@ private val destinations = listOf(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StreamerAudioApp(viewModel: MainViewModel, onLogin: () -> Unit) {
+fun StreamerAudioApp(
+    viewModel: MainViewModel,
+    onLogin: () -> Unit,
+    updateState: AppUpdateUiState = AppUpdateUiState.Idle,
+    onCheckForUpdates: () -> Unit = {},
+    onStartUpdate: (UpdateAction) -> Unit = {},
+    onDismissUpdate: () -> Unit = {},
+    onCompleteUpdate: () -> Unit = {}
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
@@ -184,6 +195,32 @@ fun StreamerAudioApp(viewModel: MainViewModel, onLogin: () -> Unit) {
             text = { Text("Built-in proxy servers were removed. Direct playback is now the default; add your own compatible HTTPS endpoint in Settings if needed.") },
             confirmButton = { TextButton(onClick = { viewModel.consumeLegacyNotice(); navController.navigate("settings") }) { Text("Open settings") } },
             dismissButton = { TextButton(onClick = viewModel::consumeLegacyNotice) { Text("Not now") } }
+        )
+    }
+    val availableUpdate = updateState as? AppUpdateUiState.Available
+    if (availableUpdate?.prompt == true) {
+        AlertDialog(
+            onDismissRequest = onDismissUpdate,
+            title = { Text("Update available") },
+            text = {
+                Text(
+                    if (availableUpdate.action is UpdateAction.GooglePlay) {
+                        "A new version of Streamer Audio is available on Google Play. You can keep using the app while it downloads."
+                    } else {
+                        "Streamer Audio ${availableUpdate.versionName} is available. Android will ask before installing the signed APK."
+                    }
+                )
+            },
+            confirmButton = { TextButton(onClick = { onStartUpdate(availableUpdate.action); onDismissUpdate() }) { Text("Update") } },
+            dismissButton = { TextButton(onClick = onDismissUpdate) { Text("Later") } }
+        )
+    }
+    if (updateState is AppUpdateUiState.ReadyToInstall) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Update ready") },
+            text = { Text("Restart Streamer Audio to finish installing the update.") },
+            confirmButton = { TextButton(onClick = onCompleteUpdate) { Text("Restart") } }
         )
     }
 
@@ -354,7 +391,17 @@ fun StreamerAudioApp(viewModel: MainViewModel, onLogin: () -> Unit) {
                     if (state.authenticated) ProfileScreen(state, viewModel::logout)
                     else LoginPrompt(onLogin)
                 }
-                composable("settings") { SettingsScreen(state, viewModel, onLogin) }
+                composable("settings") {
+                    SettingsScreen(
+                        state = state,
+                        viewModel = viewModel,
+                        onLogin = onLogin,
+                        updateState = updateState,
+                        onCheckForUpdates = onCheckForUpdates,
+                        onStartUpdate = onStartUpdate,
+                        onCompleteUpdate = onCompleteUpdate
+                    )
+                }
             }
         }
         }
@@ -1097,7 +1144,15 @@ private fun formatTimerRemaining(remainingMs: Long): String {
 }
 
 @Composable
-private fun SettingsScreen(state: MainUiState, viewModel: MainViewModel, onLogin: () -> Unit) {
+private fun SettingsScreen(
+    state: MainUiState,
+    viewModel: MainViewModel,
+    onLogin: () -> Unit,
+    updateState: AppUpdateUiState,
+    onCheckForUpdates: () -> Unit,
+    onStartUpdate: (UpdateAction) -> Unit,
+    onCompleteUpdate: () -> Unit
+) {
     var editing by remember { mutableStateOf<ProxyEndpoint?>(null) }
     var showEditor by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -1192,8 +1247,68 @@ private fun SettingsScreen(state: MainUiState, viewModel: MainViewModel, onLogin
             }
         }
         item {
+            SettingsSectionTitle("Support development")
+            Card(
+                Modifier.fillMaxWidth().padding(top = 10.dp),
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.72f))
+            ) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Enjoying Streamer Audio?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        "You can support its continued development with a contribution on Ko-fi.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Button(
+                        onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://ko-fi.com/H2H01QPYDB"))) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Favorite, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Support me on Ko-fi")
+                    }
+                }
+            }
+        }
+        item {
             SettingsSectionTitle("About")
             Card(Modifier.fillMaxWidth().padding(top = 10.dp), shape = RoundedCornerShape(22.dp)) {
+                val updateDescription = when (updateState) {
+                    AppUpdateUiState.Checking -> "Checking for updates…"
+                    is AppUpdateUiState.Available -> if (updateState.action is UpdateAction.GooglePlay) {
+                        "A newer version is available on Google Play"
+                    } else {
+                        "Version ${updateState.versionName} is available"
+                    }
+                    is AppUpdateUiState.Downloading -> updateState.percent?.let { "Downloading update: $it%" } ?: "Downloading update…"
+                    AppUpdateUiState.ReadyToInstall -> "Restart to finish the update"
+                    AppUpdateUiState.UpToDate -> "You're up to date · Version ${BuildConfig.VERSION_NAME}"
+                    is AppUpdateUiState.Error -> updateState.message
+                    AppUpdateUiState.Idle -> "Installed version ${BuildConfig.VERSION_NAME}"
+                }
+                ListItem(
+                    headlineContent = { Text("Check for updates") },
+                    supportingContent = { Text(updateDescription) },
+                    trailingContent = {
+                        if (updateState is AppUpdateUiState.Checking || updateState is AppUpdateUiState.Downloading) {
+                            CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Default.Refresh, null)
+                        }
+                    },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    modifier = Modifier
+                        .clickable(enabled = updateState !is AppUpdateUiState.Checking && updateState !is AppUpdateUiState.Downloading) {
+                            when (updateState) {
+                                is AppUpdateUiState.Available -> onStartUpdate(updateState.action)
+                                AppUpdateUiState.ReadyToInstall -> onCompleteUpdate()
+                                else -> onCheckForUpdates()
+                            }
+                        }
+                        .semantics { contentDescription = "Check for app updates" }
+                )
+                HorizontalDivider(Modifier.padding(horizontal = 16.dp))
                 ListItem(
                     headlineContent = { Text("Privacy policy") },
                     trailingContent = { Icon(Icons.AutoMirrored.Filled.OpenInNew, null) },

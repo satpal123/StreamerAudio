@@ -6,6 +6,7 @@ This is an implementation inventory, not a submitted declaration. Re-check it ag
 |---|---|---|---|---|
 | Twitch OAuth and Helix/GQL APIs | OAuth token, Twitch account ID/login, followed-channel and catalog requests, IP/network metadata | Authentication, account features, catalog and playback resolution | Token is encrypted locally; Twitch controls its server retention | Optional login; logout attempts revocation and deletes the local token |
 | Streamer Audio Netlify backend | Category/channel/profile requests and normal request metadata such as IP/user agent | Guest browsing and public catalog lookup | Confirm Netlify/function log settings and retention before submission | Guest browsing causes these requests; stop using the app to stop future requests |
+| Google Play or GitHub Releases API | Installed app version plus normal request metadata such as IP/user agent | Check for app updates and provide the appropriate signed update | Google or GitHub controls server-side logs and retention | Automatic check on app launch; manual check in Settings; installation always requires user action |
 | User-supplied proxy | Channel login, audio/source flags, IP and normal HTTPS request metadata | Optional alternate playback routing | Controlled entirely by the proxy operator | Disabled by default; user adds/selects/deletes endpoints |
 | Device Keystore + no-backup storage | Twitch access token, account ID and login | Maintain the signed-in session | Until logout, invalidation, corruption, or app-data deletion; excluded from backup | Logout or clear app data |
 | Typed DataStore | Proxy names/URLs, routing and fallback preferences, favorite channels, recently played channels, sleep-timer deadline, migration notice | User preferences and on-device library | Until edited/deleted or app-data deletion; eligible for backup/transfer | Favorite toggle, clear recent history, full in-app proxy CRUD, or clear app data |
@@ -13,7 +14,7 @@ This is an implementation inventory, not a submitted declaration. Re-check it ag
 
 ## Permissions
 
-- `INTERNET`: Twitch, backend, artwork and user-supplied proxy traffic
+- `INTERNET`: Twitch, backend, artwork, update checks and user-supplied proxy traffic
 - `ACCESS_NETWORK_STATE`: offline/error handling
 - `POST_NOTIFICATIONS`: media playback notification on supported Android versions
 - `WAKE_LOCK`: uninterrupted audio playback

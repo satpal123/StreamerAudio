@@ -3,6 +3,7 @@
 [![Android CI and Release](https://github.com/satpal123/StreamerAudio/actions/workflows/android-build.yml/badge.svg)](https://github.com/satpal123/StreamerAudio/actions/workflows/android-build.yml)
 [![Latest release](https://img.shields.io/github/v/release/satpal123/StreamerAudio)](https://github.com/satpal123/StreamerAudio/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Support me on Ko-fi](https://img.shields.io/badge/Support_me_on_Ko--fi-72a4f2?logo=ko-fi&logoColor=white)](https://ko-fi.com/H2H01QPYDB)
 
 Streamer Audio is an independent Android app for listening to live Twitch streams as audio. It supports guest browsing, optional Twitch sign-in for followed channels, an on-device Favorites and Recently played library, user-managed HTTPS playback proxies, background playback, sleep timers, and Android Auto.
 
@@ -56,6 +57,12 @@ Live channels, artwork, viewer totals, and theme colours vary over time and by a
 - Authenticated-first direct playback with safe anonymous fallback when Twitch does not accept account playback
 - Android Auto media browsing with stable Favorites, Recently played, Following, Categories, Live, and Search roots
 - Deterministic `screenshot` build type for store captures
+
+## 2.2 preview
+
+- In-app update checks using Google Play's native flexible flow for Play installs
+- Signed GitHub APK update links for direct installations
+- Optional Ko-fi support button in Settings
 
 ## Requirements
 
@@ -148,7 +155,7 @@ ANDROID_KEY_PASSWORD
 
 ## Architecture
 
-The Compose UI observes immutable `StateFlow` state. `PlaybackConnection` connects the phone UI to the Media3 `MediaLibraryService`; playback resolution and the Android Auto catalog remain service-owned. A shared OkHttp client is used by Retrofit, HLS parsing, token revocation, and proxy resolution. Release logging does not include authorization headers.
+The Compose UI observes immutable `StateFlow` state. `PlaybackConnection` connects the phone UI to the Media3 `MediaLibraryService`; playback resolution and the Android Auto catalog remain service-owned. A shared OkHttp client is used by Retrofit, HLS parsing, token revocation, proxy resolution, and GitHub update checks. Google Play installs use the official Play Core flexible update flow; sideloaded installs can open the signed APK from the latest GitHub release. Release logging does not include authorization headers.
 
 Authentication tokens are AES-GCM encrypted with a non-exportable Android Keystore key and stored under `noBackupFilesDir`. Version 2.0 performs one migration from the old preference store; `security-crypto` is retained only for this transition release.
 
@@ -158,6 +165,7 @@ Authentication tokens are AES-GCM encrypted with a non-exportable Android Keysto
 - Support: <https://streameraudio-twitch-backend.netlify.app/support>
 - OAuth callback: <https://streameraudio-twitch-backend.netlify.app/oauth/callback>
 - Releases: <https://github.com/satpal123/StreamerAudio/releases>
+- Support development: <https://ko-fi.com/H2H01QPYDB>
 
 Deployable static source and the Digital Asset Links files are under [`play/netlify`](play/netlify). Deploy that directory whenever a signing fingerprint changes, then verify `/.well-known/assetlinks.json` returns the release package and certificate without a redirect.
 

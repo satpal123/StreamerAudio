@@ -17,8 +17,8 @@ android {
         applicationId = "com.player.streameraudio"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "2.1.0"
+        versionCode = 4
+        versionName = "2.2.0"
         val localProperties = Properties().apply {
             rootProject.file("local.properties").takeIf { it.isFile }?.inputStream()?.use { load(it) }
         }
@@ -102,6 +102,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.browser)
+    implementation(libs.google.play.app.update)
+    implementation(libs.google.play.app.update.ktx)
     implementation(libs.androidx.datastore)
     implementation(libs.androidx.security.crypto)
     implementation(libs.androidx.profileinstaller)
