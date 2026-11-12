@@ -6,10 +6,12 @@ import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.Log
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.LibraryResult
+import androidx.media3.session.CommandButton
 import androidx.media3.session.MediaConstants
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaLibraryService.MediaLibrarySession
@@ -22,6 +24,7 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import com.player.streameraudio.data.auth.TokenStore
+import com.player.streameraudio.data.network.NetworkMonitor
 import com.player.streameraudio.data.playback.StreamResolver
 import com.player.streameraudio.data.settings.LastPlayedStream
 import com.player.streameraudio.data.settings.SavedStream
@@ -45,6 +48,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.future.future
+import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -57,6 +61,7 @@ import javax.inject.Inject
 import android.util.Log as AndroidLog
 
 
+@OptIn(UnstableApi::class)
 class CustomMediaLibrarySessionCallback @Inject constructor(
     private val twitchUserUseCase: GetTwitchUserUseCase,
     private val twitchStreamsUseCase: GetTwitchStreamsUseCase,
@@ -71,7 +76,8 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
     private val getBackendProfileImageUseCase: GetBackendProfileImageUseCase,
     private val tokenStore: TokenStore,
     private val playbackSettingsRepository: PlaybackSettingsRepository,
-    private val streamResolver: StreamResolver
+    private val streamResolver: StreamResolver,
+    private val networkMonitor: NetworkMonitor
 ) : MediaLibrarySession.Callback {
 
     private val coroutineScope = CoroutineScope(Dispatchers.Main + Job())
@@ -83,7 +89,8 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
         val artist: String,
         val artwork: Uri?,      // list artwork (thumbnail)
         val userLogin: String?,
-        val startedAtMs: Long?
+        val startedAtMs: Long?,
+        val gameName: String?
     )
 
     private val playableCache = ConcurrentHashMap<String, CachedPlayable>()
@@ -110,6 +117,44 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
         cursorCache.clear()
     }
 
+    fun commandButtonsForMediaItems(): List<CommandButton> =
+        listOf(favoriteButton(isFavorite = false, "Add or remove favorite"))
+
+    fun refreshMediaButtons(session: MediaSession) {
+        coroutineScope.launch {
+            updateMediaButtons(session)
+        }
+    }
+
+    fun handlePlayerError(session: MediaSession, error: PlaybackException) {
+        coroutineScope.launch {
+            retryButtonVisible = true
+            val offline = !networkMonitor.isOnline()
+            val friendlyError = if (offline) {
+                offlinePlaybackException()
+            } else {
+                PlaybackException(
+                    "Unable to play this stream. Select Retry.",
+                    error,
+                    error.errorCode
+                )
+            }
+            session.setPlaybackException(friendlyError)
+            updateMediaButtons(session)
+        }
+    }
+
+    fun clearPlaybackError(session: MediaSession) {
+        coroutineScope.launch {
+            retryButtonVisible = false
+            session.setPlaybackException(null)
+            updateMediaButtons(session)
+        }
+    }
+
+    @Volatile
+    private var retryButtonVisible = false
+
     @OptIn(UnstableApi::class)
     override fun onConnect(
         session: MediaSession,
@@ -119,6 +164,7 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
             .add(SessionCommand(PlaybackService.COMMAND_RETRY_STREAM, Bundle.EMPTY))
             .add(SessionCommand(PlaybackService.COMMAND_SET_SLEEP_TIMER, Bundle.EMPTY))
             .add(SessionCommand(PlaybackService.COMMAND_CANCEL_SLEEP_TIMER, Bundle.EMPTY))
+            .add(SessionCommand(PlaybackService.COMMAND_TOGGLE_FAVORITE, Bundle.EMPTY))
             .build()
         val playerCommands = MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon()
             .remove(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
@@ -162,11 +208,31 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
                     .setMediaType(MediaMetadata.MEDIA_TYPE_RADIO_STATION)
                     .build()
                 val item = if (isForPlayback) {
+                    if (!networkMonitor.awaitOnline(RESUME_NETWORK_WAIT_MS)) {
+                        withContext(Dispatchers.Main) { showOfflineError(mediaSession) }
+                        throw offlinePlaybackException()
+                    }
                     val login = lastPlayed.userLogin?.takeIf { it.isNotBlank() }
                         ?: lastPlayed.mediaId
-                    val resolvedUrl = streamResolver.resolve(login)
-                        ?: throw IllegalStateException("The previous stream is no longer live")
-                    createLiveMediaItem(
+                    val resolvedUrl = resolveWithRetry(login, RESUME_RESOLVE_ATTEMPTS)
+                    if (resolvedUrl == null && !networkMonitor.isOnline()) {
+                        withContext(Dispatchers.Main) { showOfflineError(mediaSession) }
+                        throw offlinePlaybackException()
+                    }
+                    if (resolvedUrl == null) {
+                        withContext(Dispatchers.Main) {
+                            showPlaybackFailure(
+                                mediaSession,
+                                "This stream is currently offline. Select another channel or Retry."
+                            )
+                        }
+                        throw PlaybackException(
+                            "This stream is currently offline.",
+                            null,
+                            PlaybackException.ERROR_CODE_IO_UNSPECIFIED
+                        )
+                    }
+                    val resumedItem = createLiveMediaItem(
                         mediaId = lastPlayed.mediaId,
                         title = lastPlayed.title,
                         artist = lastPlayed.artist,
@@ -175,6 +241,12 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
                         startedAtMs = lastPlayed.startedAtEpochMs,
                         userLogin = login
                     )
+                    withContext(Dispatchers.Main) {
+                        retryButtonVisible = false
+                        mediaSession.setPlaybackException(null)
+                        updateMediaButtons(mediaSession, resumedItem)
+                    }
+                    resumedItem
                 } else {
                     MediaItem.Builder()
                         .setMediaId(lastPlayed.mediaId)
@@ -202,15 +274,8 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
         args: Bundle
     ): ListenableFuture<SessionResult> {
         when (customCommand.customAction) {
-            PlaybackService.COMMAND_RETRY_STREAM -> {
-                session.player.currentMediaItem?.let { current ->
-                    session.player.setMediaItem(
-                        MediaItem.Builder().setMediaId(current.mediaId).setMediaMetadata(current.mediaMetadata).build()
-                    )
-                    session.player.prepare()
-                    session.player.play()
-                }
-            }
+            PlaybackService.COMMAND_RETRY_STREAM -> return retryPlayback(session, controller)
+            PlaybackService.COMMAND_TOGGLE_FAVORITE -> return toggleFavorite(session, args)
             PlaybackService.COMMAND_SET_SLEEP_TIMER -> {
                 val duration = args.getLong("duration_ms").coerceAtLeast(60_000L)
                 sleepTimerJob?.cancel()
@@ -231,6 +296,93 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
         return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
     }
 
+    private fun retryPlayback(
+        session: MediaSession,
+        controller: MediaSession.ControllerInfo
+    ): ListenableFuture<SessionResult> {
+        val resultFuture = SettableFuture.create<SessionResult>()
+        coroutineScope.launch(Dispatchers.IO) {
+            if (!networkMonitor.awaitOnline(RETRY_NETWORK_WAIT_MS)) {
+                withContext(Dispatchers.Main) { showOfflineError(session) }
+                resultFuture.set(SessionResult(SessionError.ERROR_IO))
+                return@launch
+            }
+
+            val requestItem = session.player.currentMediaItem?.let { current ->
+                MediaItem.Builder()
+                    .setMediaId(current.mediaId)
+                    .setMediaMetadata(current.mediaMetadata)
+                    .build()
+            } ?: playbackSettingsRepository.getLastPlayedStream()?.let(::createResumptionRequestItem)
+            if (requestItem == null) {
+                resultFuture.set(SessionResult(SessionError.ERROR_BAD_VALUE))
+                return@launch
+            }
+
+            try {
+                val resolved = onSetMediaItems(
+                    session,
+                    controller,
+                    mutableListOf(requestItem),
+                    0,
+                    C.TIME_UNSET
+                ).await()
+                withContext(Dispatchers.Main) {
+                    retryButtonVisible = false
+                    session.setPlaybackException(null)
+                    session.player.setMediaItems(
+                        resolved.mediaItems,
+                        resolved.startIndex,
+                        resolved.startPositionMs
+                    )
+                    session.player.prepare()
+                    session.player.play()
+                    updateMediaButtons(session)
+                }
+                resultFuture.set(SessionResult(SessionResult.RESULT_SUCCESS))
+            } catch (error: Exception) {
+                withContext(Dispatchers.Main) {
+                    if (!networkMonitor.isOnline()) showOfflineError(session)
+                    else handlePlayerError(
+                        session,
+                        PlaybackException(
+                            "Unable to play this stream. Select Retry.",
+                            error,
+                            PlaybackException.ERROR_CODE_IO_UNSPECIFIED
+                        )
+                    )
+                }
+                resultFuture.set(SessionResult(SessionError.ERROR_IO))
+            }
+        }
+        return resultFuture
+    }
+
+    private fun toggleFavorite(
+        session: MediaSession,
+        args: Bundle
+    ): ListenableFuture<SessionResult> {
+        val resultFuture = SettableFuture.create<SessionResult>()
+        coroutineScope.launch(Dispatchers.IO) {
+            val requestedId = args.getString(MediaConstants.EXTRA_KEY_MEDIA_ID)
+            val savedStream = requestedId?.let(::savedStreamFromCache)
+                ?: session.player.currentMediaItem?.let(::savedStreamFromMediaItem)
+            if (savedStream == null) {
+                resultFuture.set(SessionResult(SessionError.ERROR_BAD_VALUE))
+                return@launch
+            }
+
+            playbackSettingsRepository.toggleFavorite(savedStream)
+            val favoriteCount = playbackSettingsRepository.settings.value.favoriteStreams.size
+            withContext(Dispatchers.Main) {
+                updateMediaButtons(session)
+                (session as? MediaLibrarySession)?.notifyChildrenChanged(FAVORITES, favoriteCount, null)
+            }
+            resultFuture.set(SessionResult(SessionResult.RESULT_SUCCESS))
+        }
+        return resultFuture
+    }
+
     companion object {
         const val ROOT_AUTH = "root_auth"
         const val ROOT_GUEST = "root_guest"
@@ -246,12 +398,18 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
 
         private const val GAME_PREFIX = "game:"
         private const val SEARCH_PREFIX = "search:"
+        private const val OFFLINE_RETRY_PREFIX = "offline-retry:"
 
         private const val EXTRA_STARTED_AT_MS = "startedAtMs"
 
         // Hard cap so we don't load huge lists even if pageSize is very large.
         private const val HARD_MAX_ITEMS = 150
         private const val DEFAULT_PAGE_SIZE = 50
+        private const val RESUME_NETWORK_WAIT_MS = 12_000L
+        private const val RETRY_NETWORK_WAIT_MS = 8_000L
+        private const val RESUME_RESOLVE_ATTEMPTS = 3
+        private const val USER_PLAY_NETWORK_WAIT_MS = 2_000L
+        private const val USER_PLAY_RESOLVE_ATTEMPTS = 2
     }
 
     // Cache cursors for pagination (parentId -> list of cursors by page)
@@ -306,7 +464,7 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
         params: MediaLibraryService.LibraryParams?
     ): ListenableFuture<LibraryResult<Void>> {
         AndroidLog.d("MediaSession", "onSearch called with query: '$query'")
-        session.notifySearchResultChanged(browser, query, 0, params)
+        session.notifySearchResultChanged(browser, query, if (networkMonitor.isOnline()) 0 else 1, params)
         return Futures.immediateFuture(LibraryResult.ofVoid())
     }
 
@@ -322,6 +480,16 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
         val future = SettableFuture.create<LibraryResult<ImmutableList<MediaItem>>>()
 
         coroutineScope.future(Dispatchers.IO) {
+            if (!networkMonitor.isOnline()) {
+                val retryTarget = "$SEARCH_PREFIX${Uri.encode(query)}"
+                future.set(
+                    LibraryResult.ofItemList(
+                        listOf(createOfflineRetryItem(retryTarget)).toImmutable(),
+                        params
+                    )
+                )
+                return@future
+            }
             val accessToken = tokenStore.read()?.accessToken
             val bearer = accessToken?.takeIf { it.isNotBlank() }?.let { "Bearer $it" }
 
@@ -372,6 +540,16 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
         params: MediaLibraryService.LibraryParams?
     ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
 
+        if (parentId.startsWith(OFFLINE_RETRY_PREFIX)) {
+            val retryParentId = Uri.decode(parentId.removePrefix(OFFLINE_RETRY_PREFIX))
+            if (networkMonitor.isOnline()) {
+                return onGetChildren(session, browser, retryParentId, page, pageSize, params)
+            }
+            return Futures.immediateFuture(
+                LibraryResult.ofItemList(listOf(createOfflineRetryItem(retryParentId)).toImmutable(), params)
+            )
+        }
+
         AndroidLog.d("MediaSession", "onGetChildren: parentId='$parentId', page=$page, pageSize=$pageSize, browserPackage=${browser.packageName}")
 
         val future = SettableFuture.create<LibraryResult<ImmutableList<MediaItem>>>()
@@ -412,6 +590,16 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
                 val fromIndex = (page.coerceAtLeast(0) * hardCap).coerceAtMost(saved.size)
                 val items = saved.drop(fromIndex).take(hardCap).map(::createSavedStreamItem)
                 future.set(LibraryResult.ofItemList(items.toImmutable(), params))
+                return@future
+            }
+
+            if (!networkMonitor.isOnline()) {
+                future.set(
+                    LibraryResult.ofItemList(
+                        listOf(createOfflineRetryItem(parentId)).toImmutable(),
+                        params
+                    )
+                )
                 return@future
             }
 
@@ -476,7 +664,12 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
             }
 
             AndroidLog.d("MediaSession", "Returning ${allItems.size} items for page $page (requested $pageSize, hardCap $hardCap) after $fetchCount fetches, hasMore=${!finalCursor.isNullOrBlank()}")
-            future.set(LibraryResult.ofItemList(allItems.toImmutable(), params))
+            val resultItems = if (allItems.isEmpty() && !networkMonitor.isOnline()) {
+                listOf(createOfflineRetryItem(parentId))
+            } else {
+                allItems
+            }
+            future.set(LibraryResult.ofItemList(resultItems.toImmutable(), params))
         }
 
         return future
@@ -536,6 +729,10 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
         val childItems = mutableListOf<MediaItem>()
         coroutineScope.future(Dispatchers.IO) {
             try {
+                if (!networkMonitor.awaitOnline(USER_PLAY_NETWORK_WAIT_MS)) {
+                    withContext(Dispatchers.Main) { showOfflineError(mediaSession) }
+                    throw offlinePlaybackException()
+                }
                 // Unauthenticated playback
                 if (bearer == null) {
                     val incomingMeta = mediaItems.firstOrNull()?.mediaMetadata
@@ -567,7 +764,7 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
                     val avatar = getAvatarUriUnauth(streamerLogin)
                     val artwork = avatar ?: Uri.EMPTY
 
-                    val finalUrl = streamResolver.resolve(streamerLogin)
+                    val finalUrl = resolveWithRetry(streamerLogin, USER_PLAY_RESOLVE_ATTEMPTS)
 
                     if (finalUrl != null) {
                         val mediaItem = createLiveMediaItem(
@@ -581,10 +778,19 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
                         )
                         rememberLastPlayed(mediaId, title, artist, artwork, streamerLogin, startedAtMs, gameName)
                         childItems.add(mediaItem)
+                        withContext(Dispatchers.Main) {
+                            retryButtonVisible = false
+                            mediaSession.setPlaybackException(null)
+                            updateMediaButtons(mediaSession, mediaItem)
+                        }
                         if (!future.isDone) {
                             future.set(MediaSession.MediaItemsWithStartPosition(childItems, 0, 0L))
                         }
                     } else {
+                        withContext(Dispatchers.Main) {
+                            if (!networkMonitor.isOnline()) showOfflineError(mediaSession)
+                            else showPlaybackFailure(mediaSession, "This stream is unavailable. Select Retry.")
+                        }
                         if (!future.isDone) future.setException(Exception("Failed to fetch stream URL"))
                     }
                     return@future
@@ -603,7 +809,7 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
                 val user = (userResult as? ResponseState.Success)?.data?.firstOrNull()
                     ?: throw IllegalStateException("Unable to load channel details")
                 val loginName = user.login.trim().lowercase()
-                val finalUrl = streamResolver.resolve(loginName)
+                val finalUrl = resolveWithRetry(loginName, USER_PLAY_RESOLVE_ATTEMPTS)
                     ?: throw IllegalStateException("Failed to fetch stream URL")
                 val detailsResult = awaitNonLoading(
                     twitchStreamsDetailsUseCase(user.id, bearer, Constants.TWITCH_CLIENT_ID)
@@ -636,10 +842,19 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
                     details?.gameName ?: incomingMetadata?.extras?.getString("gameName")
                 )
                 childItems.add(mediaItem)
+                withContext(Dispatchers.Main) {
+                    retryButtonVisible = false
+                    mediaSession.setPlaybackException(null)
+                    updateMediaButtons(mediaSession, mediaItem)
+                }
                 if (!future.isDone) {
                     future.set(MediaSession.MediaItemsWithStartPosition(childItems, 0, 0L))
                 }
             } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    if (!networkMonitor.isOnline()) showOfflineError(mediaSession)
+                    else showPlaybackFailure(mediaSession, "Unable to play this stream. Select Retry.")
+                }
                 if (!future.isDone) future.setException(e)
             }
         }
@@ -874,6 +1089,129 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
         }
     }
 
+    private suspend fun resolveWithRetry(channelLogin: String, attempts: Int): String? {
+        repeat(attempts.coerceAtLeast(1)) { attempt ->
+            streamResolver.resolve(channelLogin)?.let { return it }
+            if (!networkMonitor.isOnline()) return null
+            if (attempt < attempts - 1) delay(1_000L * (attempt + 1))
+        }
+        return null
+    }
+
+    private fun offlinePlaybackException(): PlaybackException = PlaybackException(
+        "Offline. Reconnect to the internet and select Retry.",
+        null,
+        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
+    )
+
+    private fun showOfflineError(session: MediaSession) {
+        retryButtonVisible = true
+        session.setPlaybackException(offlinePlaybackException())
+        updateMediaButtons(session)
+    }
+
+    private fun showPlaybackFailure(session: MediaSession, message: String) {
+        retryButtonVisible = true
+        session.setPlaybackException(
+            PlaybackException(message, null, PlaybackException.ERROR_CODE_IO_UNSPECIFIED)
+        )
+        updateMediaButtons(session)
+    }
+
+    private fun updateMediaButtons(session: MediaSession, item: MediaItem? = session.player.currentMediaItem) {
+        val savedStream = item?.let(::savedStreamFromMediaItem)
+        val isFavorite = savedStream?.stableKey?.let { key ->
+            playbackSettingsRepository.settings.value.favoriteStreams.any { it.stableKey == key }
+        } == true
+        val buttons = buildList {
+            if (retryButtonVisible) add(retryButton())
+            if (savedStream != null) {
+                add(
+                    favoriteButton(
+                        isFavorite,
+                        if (isFavorite) "Remove from Favorites" else "Add to Favorites"
+                    )
+                )
+            }
+        }
+        session.setMediaButtonPreferences(buttons)
+    }
+
+    private fun retryButton(): CommandButton =
+        CommandButton.Builder(CommandButton.ICON_SYNC)
+            .setDisplayName("Retry")
+            .setSessionCommand(SessionCommand(PlaybackService.COMMAND_RETRY_STREAM, Bundle.EMPTY))
+            .build()
+
+    private fun favoriteButton(isFavorite: Boolean, displayName: String): CommandButton =
+        CommandButton.Builder(
+            if (isFavorite) CommandButton.ICON_HEART_FILLED else CommandButton.ICON_HEART_UNFILLED
+        )
+            .setDisplayName(displayName)
+            .setSessionCommand(SessionCommand(PlaybackService.COMMAND_TOGGLE_FAVORITE, Bundle.EMPTY))
+            .build()
+
+    private fun savedStreamFromCache(mediaId: String): SavedStream? {
+        val cached = playableCache[mediaId] ?: return null
+        val login = cached.userLogin?.takeIf { it.isNotBlank() } ?: mediaId
+        return SavedStream(
+            mediaId = mediaId,
+            userLogin = login,
+            title = cached.title.ifBlank { "Live" },
+            artist = cached.artist.ifBlank { login },
+            artworkUrl = cached.artwork?.toString()?.takeIf { it.isNotBlank() },
+            gameName = cached.gameName,
+            savedAtEpochMs = System.currentTimeMillis()
+        )
+    }
+
+    private fun savedStreamFromMediaItem(item: MediaItem): SavedStream? {
+        val cached = playableCache[item.mediaId]
+        val extras = item.mediaMetadata.extras
+        val login = extras?.getString("userLogin")?.takeIf { it.isNotBlank() }
+            ?: cached?.userLogin?.takeIf { it.isNotBlank() }
+            ?: item.mediaId.takeIf { it.isNotBlank() }
+            ?: return null
+        val title = item.mediaMetadata.title?.toString()?.takeIf { it.isNotBlank() }
+            ?: cached?.title
+            ?: "Live"
+        val artist = extras?.getString("displayArtist")?.takeIf { it.isNotBlank() }
+            ?: cached?.artist?.takeIf { it.isNotBlank() }
+            ?: item.mediaMetadata.artist?.toString()?.substringBefore(" - ")?.takeIf { it.isNotBlank() }
+            ?: login
+        return SavedStream(
+            mediaId = item.mediaId,
+            userLogin = login,
+            title = title,
+            artist = artist,
+            artworkUrl = item.mediaMetadata.artworkUri?.toString()?.takeIf { it.isNotBlank() }
+                ?: cached?.artwork?.toString()?.takeIf { it.isNotBlank() },
+            gameName = extras?.getString("gameName") ?: cached?.gameName,
+            savedAtEpochMs = System.currentTimeMillis()
+        )
+    }
+
+    private fun createResumptionRequestItem(lastPlayed: LastPlayedStream): MediaItem {
+        val extras = Bundle().apply {
+            lastPlayed.userLogin?.let { putString("userLogin", it) }
+            lastPlayed.startedAtEpochMs?.let { putLong(EXTRA_STARTED_AT_MS, it) }
+        }
+        return MediaItem.Builder()
+            .setMediaId(lastPlayed.mediaId)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(lastPlayed.title)
+                    .setArtist(lastPlayed.artist)
+                    .setArtworkUri(lastPlayed.artworkUrl?.let(Uri::parse))
+                    .setExtras(extras)
+                    .setIsPlayable(true)
+                    .setMediaType(MediaMetadata.MEDIA_TYPE_RADIO_STATION)
+                    .setSupportedCommands(listOf(PlaybackService.COMMAND_TOGGLE_FAVORITE))
+                    .build()
+            )
+            .build()
+    }
+
     // -------------------- MediaItem builders --------------------
 
     private fun createPlayableStreamItem(
@@ -908,8 +1246,11 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
             artist = artist,
             artwork = artwork,
             userLogin = userLogin,
-            startedAtMs = startedAtMs
+            startedAtMs = startedAtMs,
+            gameName = gameName
         )
+
+        meta.setSupportedCommands(listOf(PlaybackService.COMMAND_TOGGLE_FAVORITE))
 
         return MediaItem.Builder()
             .setMediaId(mediaId)
@@ -941,6 +1282,13 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
             .setMediaMetadata(meta.build())
             .build()
     }
+
+    private fun createOfflineRetryItem(targetParentId: String): MediaItem =
+        createBrowsableItem(
+            mediaId = "$OFFLINE_RETRY_PREFIX${Uri.encode(targetParentId)}",
+            title = "Offline",
+            subtitle = "Reconnect to the internet, then select to retry"
+        )
 
     private fun createSavedStreamItem(stream: SavedStream): MediaItem =
         createPlayableStreamItem(
@@ -986,6 +1334,7 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
                     .setIsBrowsable(false)
                     .setIsPlayable(true)
                     .setMediaType(MediaMetadata.MEDIA_TYPE_RADIO_STATION)
+                    .setSupportedCommands(listOf(PlaybackService.COMMAND_TOGGLE_FAVORITE))
                     .build()
             )
             .build()

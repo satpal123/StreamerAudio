@@ -17,6 +17,7 @@ class PlaybackService : AudioPlayerService() {
     const val COMMAND_RETRY_STREAM = "com.player.streameraudio.action.RETRY_STREAM"
     const val COMMAND_SET_SLEEP_TIMER = "com.player.streameraudio.action.SET_SLEEP_TIMER"
     const val COMMAND_CANCEL_SLEEP_TIMER = "com.player.streameraudio.action.CANCEL_SLEEP_TIMER"
+    const val COMMAND_TOGGLE_FAVORITE = "com.player.streameraudio.action.TOGGLE_FAVORITE"
   }
 
   private var sessionActivityListenerAdded = false
@@ -34,12 +35,23 @@ class PlaybackService : AudioPlayerService() {
       player?.addListener(object : Player.Listener {
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
           updateSessionActivity()
+          mediaLibrarySession?.let(customMediaLibrarySessionCallback::refreshMediaButtons)
         }
 
         override fun onMediaMetadataChanged(
           mediaMetadata: androidx.media3.common.MediaMetadata
         ) {
           updateSessionActivity()
+        }
+
+        override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+          mediaLibrarySession?.let { customMediaLibrarySessionCallback.handlePlayerError(it, error) }
+        }
+
+        override fun onPlaybackStateChanged(playbackState: Int) {
+          if (playbackState == Player.STATE_READY) {
+            mediaLibrarySession?.let(customMediaLibrarySessionCallback::clearPlaybackError)
+          }
         }
       })
     }

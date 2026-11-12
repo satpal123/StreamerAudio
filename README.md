@@ -63,6 +63,8 @@ Live channels, artwork, viewer totals, and theme colours vary over time and by a
 - In-app update checks using Google Play's native flexible flow for Play installs
 - Signed GitHub APK update links for direct installations
 - Optional Ko-fi support button in Settings
+- Android Auto Offline and Retry states with safer live-stream resumption after reconnecting
+- Android Auto favorite actions in stream lists and Now Playing
 
 ## Requirements
 

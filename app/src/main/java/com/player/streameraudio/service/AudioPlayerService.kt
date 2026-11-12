@@ -149,7 +149,11 @@ open class AudioPlayerService : MediaLibraryService() {
       this,
       forwardingPlayer,
       customMediaLibrarySessionCallback
-    ).build()
+    )
+      .setCommandButtonsForMediaItems(
+        customMediaLibrarySessionCallback.commandButtonsForMediaItems()
+      )
+      .build()
 
     val token = SessionToken(this, ComponentName(this, PlaybackService::class.java))
     val controllerFuture = MediaController.Builder(this, token).buildAsync()

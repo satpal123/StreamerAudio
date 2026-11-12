@@ -8,6 +8,7 @@ import com.player.streameraudio.BuildConfig
 import com.player.streameraudio.data.auth.KeystoreTokenStore
 import com.player.streameraudio.data.auth.TokenStore
 import com.player.streameraudio.data.playback.StreamResolver
+import com.player.streameraudio.data.network.NetworkMonitor
 import com.player.streameraudio.data.api.BackendApiService
 import com.player.streameraudio.data.api.TwitchApiService
 import com.player.streameraudio.data.api.TwitchOauthApiService
@@ -153,7 +154,8 @@ object NetworkModule {
         getBackendProfileImageUseCase: GetBackendProfileImageUseCase,
         tokenStore: TokenStore,
         playbackSettingsRepository: PlaybackSettingsRepository,
-        streamResolver: StreamResolver
+        streamResolver: StreamResolver,
+        networkMonitor: NetworkMonitor
     ): CustomMediaLibrarySessionCallback = CustomMediaLibrarySessionCallback(
         twitchUserUseCase,
         twitchStreamsUseCase,
@@ -168,6 +170,7 @@ object NetworkModule {
         getBackendProfileImageUseCase,
         tokenStore,
         playbackSettingsRepository,
-        streamResolver
+        streamResolver,
+        networkMonitor
     )
 }

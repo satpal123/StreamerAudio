@@ -2,12 +2,15 @@
 
 All notable user-facing changes to Streamer Audio are documented here.
 
-## 2.2.0 preview - 2026-11-09
+## 2.2.0 preview - 2026-11-12
 
 - Added automatic and manual update checks.
 - Added Google Play's flexible in-app update flow for Play Store installations.
 - Added signed GitHub APK update links for direct installations.
 - Added an optional Ko-fi support button in Settings and the project README.
+- Added Android Auto Offline messaging and Retry actions for browse and playback failures.
+- Improved automatic playback resumption by waiting for validated connectivity and resolving a fresh live URL.
+- Added Android Auto favorite actions for browse results and the Now Playing screen.
 
 ## [2.1.0](https://github.com/satpal123/StreamerAudio/releases/tag/v2.1.0) - 2026-11-05
 
