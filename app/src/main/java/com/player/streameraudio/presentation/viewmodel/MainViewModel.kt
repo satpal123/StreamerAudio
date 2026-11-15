@@ -54,7 +54,9 @@ data class MainUiState(
     val loadingMore: Boolean = false,
     val searchQuery: String? = null,
     val profileImageUrl: String? = null,
-    val selectedSleepTimerMinutes: Int? = null
+    val selectedSleepTimerMinutes: Int? = null,
+    val videoEnabled: Boolean = false,
+    val maxVideoHeight: Int? = null
 )
 
 @HiltViewModel
@@ -79,6 +81,8 @@ class MainViewModel @Inject constructor(
             validateStoredSession(session)
         }
         playbackConnection.connect()
+        viewModelScope.launch { playbackConnection.videoEnabled.collectLatest { value -> _uiState.update { it.copy(videoEnabled = value) } } }
+        viewModelScope.launch { playbackConnection.maxVideoHeight.collectLatest { value -> _uiState.update { it.copy(maxVideoHeight = value) } } }
         viewModelScope.launch { playbackConnection.snapshot.collectLatest { value -> _uiState.update { it.copy(playback = value) } } }
         viewModelScope.launch {
             settingsRepository.settings.collectLatest { value ->
@@ -214,6 +218,9 @@ class MainViewModel @Inject constructor(
     fun setVolumeLeveling(enabled: Boolean) {
         viewModelScope.launch { settingsRepository.setVolumeLevelingEnabled(enabled) }
     }
+    val player: androidx.media3.common.Player? get() = playbackConnection.player
+    fun setVideoEnabled(enabled: Boolean) = playbackConnection.setVideoEnabled(enabled)
+    fun setMaxVideoHeight(height: Int?) = playbackConnection.setMaxVideoHeight(height)
     fun togglePlayback() = playbackConnection.togglePlayback()
     fun retryPlayback() = playbackConnection.retry()
     fun setSleepTimer(minutes: Int?) {

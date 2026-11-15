@@ -46,6 +46,8 @@ open class AudioPlayerService : MediaLibraryService() {
     const val MAX_BUFFER_MS = 180_000
     const val BUFFER_FOR_PLAYBACK_MS = 3_000
     const val BUFFER_AFTER_REBUFFER_MS = 12_000
+    // Caps memory when video is enabled. Audio-only needs only a few MB for the full time window.
+    const val TARGET_BUFFER_BYTES = 24 * 1024 * 1024
     const val VOLUME_LEVELING_GAIN_MB = 600
     const val TAG = "AudioPlayerService"
   }
@@ -91,7 +93,8 @@ open class AudioPlayerService : MediaLibraryService() {
         BUFFER_FOR_PLAYBACK_MS,
         BUFFER_AFTER_REBUFFER_MS
       )
-      .setPrioritizeTimeOverSizeThresholds(true)
+      .setTargetBufferBytes(TARGET_BUFFER_BYTES)
+      .setPrioritizeTimeOverSizeThresholds(false)
       .build()
 
     player = ExoPlayer.Builder(this)

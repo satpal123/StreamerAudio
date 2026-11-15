@@ -3,6 +3,7 @@ package com.player.streameraudio.presentation.playback
 import android.content.ComponentName
 import android.content.Context
 import androidx.core.content.ContextCompat
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
@@ -10,6 +11,7 @@ import androidx.media3.common.Player
 import androidx.media3.session.MediaBrowser
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionToken
+import com.player.streameraudio.data.playback.VideoPreference
 import com.player.streameraudio.service.PlaybackService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,11 +31,17 @@ data class PlaybackSnapshot(
 
 @Singleton
 class PlaybackConnection @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val videoPreference: VideoPreference
 ) {
     private val _snapshot = MutableStateFlow(PlaybackSnapshot())
     val snapshot: StateFlow<PlaybackSnapshot> = _snapshot
     private var browser: MediaBrowser? = null
+
+    /** The connected player, used by the UI to render video. Null until the session connects. */
+    val player: Player? get() = browser
+    val videoEnabled: StateFlow<Boolean> = videoPreference.enabled
+    val maxVideoHeight: StateFlow<Int?> = videoPreference.maxHeight
     private var connecting = false
 
     private val listener = object : Player.Listener {
@@ -58,6 +66,7 @@ class PlaybackConnection @Inject constructor(
                 browser = it
                 connecting = false
                 it.addListener(listener)
+                applyTrackSelection()
                 publish()
             }.onFailure {
                 connecting = false
@@ -129,6 +138,28 @@ class PlaybackConnection @Inject constructor(
             isResolving = true
         )
         browser?.apply { setMediaItem(playbackItem); prepare(); play() }
+    }
+
+    /** Switches between audio-only and video. The stream is resolved again for the new mode. */
+    fun setVideoEnabled(enabled: Boolean) {
+        if (videoPreference.enabled.value == enabled) return
+        videoPreference.setEnabled(enabled)
+        applyTrackSelection()
+        if (browser?.currentMediaItem != null) retry()
+    }
+
+    /** Limits the video height (null = automatic). Applies live, without restarting the stream. */
+    fun setMaxVideoHeight(height: Int?) {
+        videoPreference.setMaxHeight(height)
+        applyTrackSelection()
+    }
+
+    private fun applyTrackSelection() {
+        val active = browser ?: return
+        active.trackSelectionParameters = active.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, !videoPreference.enabled.value)
+            .setMaxVideoSize(Int.MAX_VALUE, videoPreference.maxHeight.value ?: Int.MAX_VALUE)
+            .build()
     }
 
     fun togglePlayback() { browser?.let { if (it.isPlaying) it.pause() else it.play() } }

@@ -23,6 +23,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import com.player.streameraudio.data.auth.TokenStore
 import com.player.streameraudio.data.playback.StreamResolver
+import com.player.streameraudio.data.playback.VideoPreference
 import com.player.streameraudio.data.settings.LastPlayedStream
 import com.player.streameraudio.data.settings.SavedStream
 import com.player.streameraudio.data.util.Constants
@@ -71,7 +72,8 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
     private val getBackendProfileImageUseCase: GetBackendProfileImageUseCase,
     private val tokenStore: TokenStore,
     private val playbackSettingsRepository: PlaybackSettingsRepository,
-    private val streamResolver: StreamResolver
+    private val streamResolver: StreamResolver,
+    private val videoPreference: VideoPreference
 ) : MediaLibrarySession.Callback {
 
     private val coroutineScope = CoroutineScope(Dispatchers.Main + Job())
@@ -974,7 +976,7 @@ class CustomMediaLibrarySessionCallback @Inject constructor(
             .setUri(streamUrl)
             .setLiveConfiguration(
                 MediaItem.LiveConfiguration.Builder()
-                    .setTargetOffsetMs(60_000)
+                    .setTargetOffsetMs(if (videoPreference.enabled.value) 15_000 else 60_000)
                     .build()
             )
             .setMediaMetadata(

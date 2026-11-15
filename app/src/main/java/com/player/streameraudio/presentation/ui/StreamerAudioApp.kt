@@ -28,6 +28,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -108,6 +110,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -126,6 +129,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
 import com.player.streameraudio.data.settings.PlaybackMode
 import com.player.streameraudio.data.settings.ProxyEndpoint
@@ -1022,6 +1026,7 @@ private fun MiniPlayer(state: MainUiState, toggle: () -> Unit, open: () -> Unit)
     }
 }
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 private fun PlayerScreen(state: MainUiState, viewModel: MainViewModel) {
     val item = state.playback.mediaItem
@@ -1031,9 +1036,43 @@ private fun PlayerScreen(state: MainUiState, viewModel: MainViewModel) {
     }
     val sleepRemaining = rememberSleepTimerRemaining(state.settings.sleepTimerDeadlineEpochMs)
     val isFavorite = item.stableStreamKey() in state.settings.favoriteStreams.map { it.stableKey }.toSet()
-    Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    val videoPlayer = if (state.playback.connected) viewModel.player else null
+    Column(
+        Modifier
+            .fillMaxSize()
+            .then(if (state.videoEnabled) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
         Spacer(Modifier.height(8.dp))
-        AsyncImage(item.mediaMetadata.artworkUri, null, Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(24.dp)), contentScale = ContentScale.Crop)
+        if (state.videoEnabled) {
+            AndroidView(
+                factory = { context ->
+                    PlayerView(context).apply {
+                        useController = false
+                        keepScreenOn = true
+                        setBackgroundColor(android.graphics.Color.BLACK)
+                    }
+                },
+                update = { view -> view.player = videoPlayer },
+                onRelease = { view -> view.player = null },
+                modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(16.dp))
+            )
+        } else {
+            AsyncImage(item.mediaMetadata.artworkUri, null, Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(24.dp)), contentScale = ContentScale.Crop)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(!state.videoEnabled, { viewModel.setVideoEnabled(false) }, { Text("Audio only") })
+            FilterChip(state.videoEnabled, { viewModel.setVideoEnabled(true) }, { Text("Video") })
+        }
+        if (state.videoEnabled) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf<Pair<Int?, String>>(null to "Auto", 720 to "720p", 480 to "480p", 360 to "360p").forEach { (height, label) ->
+                    FilterChip(state.maxVideoHeight == height, { viewModel.setMaxVideoHeight(height) }, { Text(label) })
+                }
+            }
+        }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 item.mediaMetadata.artist?.toString().orEmpty(),

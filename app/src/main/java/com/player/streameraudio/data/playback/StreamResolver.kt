@@ -20,7 +20,8 @@ class StreamResolver @Inject constructor(
     private val twitchGqlService: TwitchGqlService,
     private val tokenStore: TokenStore,
     private val settingsRepository: PlaybackSettingsRepository,
-    private val okHttpClient: OkHttpClient
+    private val okHttpClient: OkHttpClient,
+    private val videoPreference: VideoPreference
 ) {
     suspend fun resolve(channelLogin: String): String? {
         val settings = settingsRepository.settings.value
@@ -55,7 +56,7 @@ class StreamResolver @Inject constructor(
                 )
                 ?: return@withContext null
             val hlsUrl = twitchGqlService.buildHlsUrl(normalized, token, signature)
-            parseAudioPlaylist(hlsUrl) ?: hlsUrl
+            if (videoPreference.enabled.value) hlsUrl else (parseAudioPlaylist(hlsUrl) ?: hlsUrl)
         }.onFailure { Log.w(TAG, "Direct stream resolution failed") }.getOrNull()
     }
 
@@ -89,6 +90,9 @@ class StreamResolver @Inject constructor(
                         return@use
                     }
                     val entries = ExtM3UParser().parse(response.body.string())
+                    if (videoPreference.enabled.value) {
+                        entries.firstOrNull { it.name != "audio_only" }?.playlistUrl?.let { return@withContext it }
+                    }
                     entries.firstOrNull { it.name == "audio_only" }?.playlistUrl?.let { return@withContext it }
                     entries.firstOrNull()?.playlistUrl?.let { return@withContext it }
                 }
